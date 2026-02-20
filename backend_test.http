@@ -1,0 +1,243 @@
+### ───────────────────────────────────────────────
+### CertifyTube Backend — HTTP Test File
+### Open in IntelliJ IDEA → Run individual requests
+### ───────────────────────────────────────────────
+
+### Variables (set your token after login)
+@host = http://localhost:8080
+@token = YOUR_JWT_TOKEN_HERE
+
+### ═════════════════════════════════════════════════
+### AUTH
+### ═════════════════════════════════════════════════
+
+### 1. Signup
+POST {{host}}/api/auth/signup
+Content-Type: application/json
+
+{
+  "email": "testuser@example.com",
+  "password": "Password@123"
+}
+
+### 2. Login
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "testuser@example.com",
+  "password": "Password@123"
+}
+
+### 3. Get current user
+GET {{host}}/api/auth/me
+Authorization: Bearer {{token}}
+
+### 4. Logout
+POST {{host}}/api/auth/logout
+Authorization: Bearer {{token}}
+
+### ═════════════════════════════════════════════════
+### YOUTUBE SEARCH
+### ═════════════════════════════════════════════════
+
+### 5. Search videos
+GET {{host}}/api/youtube/search?q=spring%20boot&limit=5
+
+### ═════════════════════════════════════════════════
+### SESSIONS
+### ═════════════════════════════════════════════════
+
+### 6. Start session
+POST {{host}}/api/sessions/start
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "videoId": "dQw4w9WgXcQ",
+  "videoTitle": "Test Video"
+}
+
+### 7. End session (replace SESSION_ID)
+POST {{host}}/api/sessions/end?sessionId=SESSION_ID_HERE
+Authorization: Bearer {{token}}
+
+### ═════════════════════════════════════════════════
+### EVENTS
+### ═════════════════════════════════════════════════
+
+### 8. Send event batch
+POST {{host}}/api/events/batch
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+[
+  {
+    "sessionId": "SESSION_ID_HERE",
+    "eventType": "play",
+    "playerState": 1,
+    "playbackRate": 1.0,
+    "currentTimeSec": 0.0,
+    "videoDurationSec": 600.0,
+    "clientEventMs": 1000
+  },
+  {
+    "sessionId": "SESSION_ID_HERE",
+    "eventType": "pause",
+    "playerState": 2,
+    "playbackRate": 1.0,
+    "currentTimeSec": 120.5,
+    "videoDurationSec": 600.0,
+    "clientEventMs": 121500
+  },
+  {
+    "sessionId": "SESSION_ID_HERE",
+    "eventType": "play",
+    "playerState": 1,
+    "playbackRate": 1.0,
+    "currentTimeSec": 120.5,
+    "videoDurationSec": 600.0,
+    "clientEventMs": 125000
+  },
+  {
+    "sessionId": "SESSION_ID_HERE",
+    "eventType": "seek",
+    "playerState": 1,
+    "playbackRate": 1.0,
+    "currentTimeSec": 300.0,
+    "videoDurationSec": 600.0,
+    "seekFromSec": 120.5,
+    "seekToSec": 300.0,
+    "clientEventMs": 130000
+  },
+  {
+    "sessionId": "SESSION_ID_HERE",
+    "eventType": "ended",
+    "playerState": 0,
+    "playbackRate": 1.0,
+    "currentTimeSec": 580.0,
+    "videoDurationSec": 600.0,
+    "clientEventMs": 400000
+  }
+]
+
+### ═════════════════════════════════════════════════
+### ANALYZE
+### ═════════════════════════════════════════════════
+
+### 9a. Analyze session (XGBoost — default)
+POST {{host}}/api/sessions/SESSION_ID_HERE/analyze
+Authorization: Bearer {{token}}
+
+### 9b. Analyze session (EBM)
+POST {{host}}/api/sessions/SESSION_ID_HERE/analyze?model=ebm
+Authorization: Bearer {{token}}
+
+### ═════════════════════════════════════════════════
+### QUIZ
+### ═════════════════════════════════════════════════
+
+### 10. Check quiz eligibility
+GET {{host}}/api/quiz/eligibility?sessionId=SESSION_ID_HERE
+Authorization: Bearer {{token}}
+
+### 11. Generate quiz
+POST {{host}}/api/quiz/generate
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "sessionId": "SESSION_ID_HERE",
+  "difficulty": "medium"
+}
+
+### 12. Get quiz
+GET {{host}}/api/quiz/QUIZ_ID_HERE
+Authorization: Bearer {{token}}
+
+### 13. Submit quiz answers
+POST {{host}}/api/quiz/QUIZ_ID_HERE/submit
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "answers": {
+    "q1": "A",
+    "q2": "B",
+    "q3": "true",
+    "q4": "C",
+    "q5": "D"
+  }
+}
+
+### 14. Get quiz result
+GET {{host}}/api/quiz/QUIZ_ID_HERE/result
+Authorization: Bearer {{token}}
+
+### ═════════════════════════════════════════════════
+### CERTIFICATES
+### ═════════════════════════════════════════════════
+
+### 15. Get certificate (owner only)
+GET {{host}}/api/certificates/CERTIFICATE_ID_HERE
+Authorization: Bearer {{token}}
+
+### 16. Download certificate PDF
+GET {{host}}/api/certificates/CERTIFICATE_ID_HERE/pdf
+Authorization: Bearer {{token}}
+
+### 17. Public verify certificate
+GET {{host}}/api/certificates/verify/VERIFICATION_TOKEN_HERE
+
+### ═════════════════════════════════════════════════
+### ADMIN (requires ADMIN role)
+### ═════════════════════════════════════════════════
+
+### 18. Admin: Get stats
+GET {{host}}/api/admin/stats
+Authorization: Bearer {{token}}
+
+### 19. Admin: List all users
+GET {{host}}/api/admin/users
+Authorization: Bearer {{token}}
+
+### 20. Admin: Get user by ID
+GET {{host}}/api/admin/users/1
+Authorization: Bearer {{token}}
+
+### 21. Admin: Update user role
+PUT {{host}}/api/admin/users/1/role
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "role": "ADMIN"
+}
+
+### 22. Admin: Delete user
+DELETE {{host}}/api/admin/users/2
+Authorization: Bearer {{token}}
+
+### 23. Admin: List sessions
+GET {{host}}/api/admin/sessions
+Authorization: Bearer {{token}}
+
+### 24. Admin: Delete session
+DELETE {{host}}/api/admin/sessions/SESSION_ID_HERE
+Authorization: Bearer {{token}}
+
+### 25. Admin: List certificates
+GET {{host}}/api/admin/certificates
+Authorization: Bearer {{token}}
+
+### 26. Admin: Delete certificate
+DELETE {{host}}/api/admin/certificates/CERT_ID_HERE
+Authorization: Bearer {{token}}
+
+### 27. Admin: List quizzes
+GET {{host}}/api/admin/quizzes
+Authorization: Bearer {{token}}
+
+### 28. Admin: Delete quiz
+DELETE {{host}}/api/admin/quizzes/QUIZ_ID_HERE
+Authorization: Bearer {{token}}
