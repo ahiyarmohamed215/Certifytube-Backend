@@ -19,7 +19,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.io.ByteArrayOutputStream;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class CertificateService {
@@ -32,17 +34,21 @@ public class CertificateService {
     @Transactional
     public Certificate issueIfAbsent(Long userId, String sessionId, QuizAttempt attempt) {
         return certificateRepository.findTopByUserIdAndSessionIdOrderByCreatedAtUtcDesc(userId, sessionId)
-                .orElseGet(() -> certificateRepository.save(Certificate.builder()
-                        .certificateId(UUID.randomUUID().toString())
-                        .userId(userId)
-                        .sessionId(sessionId)
-                        .quizAttemptId(attempt.getId())
-                        .scorePercent(attempt.getScorePercent())
-                        .certificateNumber("CT-" + Instant.now().toEpochMilli() + "-" + userId)
-                        .verificationToken(UUID.randomUUID().toString().replace("-", ""))
-                        .pdfBytes(generatePdf(userId, sessionId, attempt.getScorePercent()))
-                        .createdAtUtc(Instant.now())
-                        .build()));
+                .orElseGet(() -> {
+                    Certificate cert = certificateRepository.save(Certificate.builder()
+                            .certificateId(UUID.randomUUID().toString())
+                            .userId(userId)
+                            .sessionId(sessionId)
+                            .quizAttemptId(attempt.getId())
+                            .scorePercent(attempt.getScorePercent())
+                            .certificateNumber("CT-" + Instant.now().toEpochMilli() + "-" + userId)
+                            .verificationToken(UUID.randomUUID().toString().replace("-", ""))
+                            .pdfBytes(generatePdf(userId, sessionId, attempt.getScorePercent()))
+                            .createdAtUtc(Instant.now())
+                            .build());
+                    log.info("Issued and saved new Certificate={} to DB for session={}", cert.getCertificateId(), sessionId);
+                    return cert;
+                });
     }
 
     @Transactional(readOnly = true)

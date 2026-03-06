@@ -8,7 +8,9 @@ import org.springframework.web.reactive.function.client.WebClient;
 
 import java.util.HashMap;
 import java.util.Map;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class MlServiceClient {
@@ -79,23 +81,20 @@ public class MlServiceClient {
                 payload.put("video_id", videoId);
                 payload.put("video_duration_sec", videoDurationSec);
 
-                if (videoTitle != null && !videoTitle.isBlank()) {
-                        payload.put("video_title", videoTitle);
-                }
-                if (numQuestions != null) {
-                        payload.put("num_questions", numQuestions);
-                }
-                if (includeCoding != null) {
-                        payload.put("include_coding", includeCoding);
-                }
+                log.info("Sending payload to ML service /quiz/generate: {}", payload);
 
-                return client()
-                                .post()
-                                .uri("/quiz/generate")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .bodyValue(payload)
-                                .retrieve()
-                                .bodyToMono(Map.class)
-                                .block();
+                try {
+                        return client()
+                                        .post()
+                                        .uri("/quiz/generate")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .bodyValue(payload)
+                                        .retrieve()
+                                        .bodyToMono(Map.class)
+                                        .block();
+                } catch (org.springframework.web.reactive.function.client.WebClientResponseException e) {
+                        log.error("ML Service quiz generate error {}: {}", e.getStatusCode(), e.getResponseBodyAsString());
+                        throw e;
+                }
         }
 }

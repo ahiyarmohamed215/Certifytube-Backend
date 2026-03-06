@@ -9,6 +9,7 @@ import com.certifytube.backend.model.SessionEvent;
 import com.certifytube.backend.repository.SessionRepository;
 import com.certifytube.backend.repository.SessionEventRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class SessionEventServiceImpl implements SessionEventService {
@@ -127,9 +129,13 @@ public class SessionEventServiceImpl implements SessionEventService {
             }
         }
 
-        eventRepository.saveAll(entities);
+        if (!entities.isEmpty()) {
+            eventRepository.saveAll(entities);
+            log.info("Saved {} session events to database", entities.size());
+        }
 
         // Update session progress (lastPositionSec + videoDurationSec)
+        int updatedSessions = 0;
         for (Map.Entry<String, Double> entry : latestPositionPerSession.entrySet()) {
             Session session = sessionCache.get(entry.getKey());
             if (session != null) {
@@ -139,7 +145,11 @@ public class SessionEventServiceImpl implements SessionEventService {
                     session.setVideoDurationSec(duration);
                 }
                 sessionRepository.save(session);
+                updatedSessions++;
             }
+        }
+        if (updatedSessions > 0) {
+            log.info("Updated progress for {} sessions in database", updatedSessions);
         }
 
         return EventBatchResponse.builder()

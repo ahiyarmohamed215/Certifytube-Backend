@@ -16,6 +16,7 @@ import com.certifytube.backend.util.StemCategoryUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
@@ -23,6 +24,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class SessionAnalyzeServiceImpl implements SessionAnalyzeService {
@@ -158,7 +160,7 @@ public class SessionAnalyzeServiceImpl implements SessionAnalyzeService {
 
         // 4) Save ML result
         try {
-            engagementResultRepository.save(EngagementResult.builder()
+            EngagementResult saved = engagementResultRepository.save(EngagementResult.builder()
                     .sessionId(sessionId)
                     .modelUsed(resolvedModel)
                     .engagementScore(score)
@@ -169,6 +171,7 @@ public class SessionAnalyzeServiceImpl implements SessionAnalyzeService {
                     .topNegativeJson(mapper.writeValueAsString(topNegative))
                     .createdAtUtc(Instant.now())
                     .build());
+            log.info("Saved EngagementResult to DB with score={} and status={} for session={}", score, status, sessionId);
         } catch (Exception e) {
             throw new RuntimeException("Failed to save ML engagement result", e);
         }

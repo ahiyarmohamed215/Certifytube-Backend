@@ -8,8 +8,10 @@ import com.certifytube.backend.dto.QuizSubmitRequest;
 import com.certifytube.backend.service.QuizService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
+@Slf4j
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/quiz")
@@ -19,12 +21,18 @@ public class QuizController {
 
     @GetMapping("/eligibility")
     public QuizEligibilityResponse eligibility(@RequestParam String sessionId) {
-        return quizService.eligibility(sessionId);
+        log.info("Checking quiz eligibility for session={}", sessionId);
+        QuizEligibilityResponse response = quizService.eligibility(sessionId);
+        log.info("Eligibility response for session={}: eligible={}", sessionId, response.isEligible());
+        return response;
     }
 
     @PostMapping("/generate")
     public QuizResponse generate(@Valid @RequestBody QuizGenerateRequest req) {
-        return quizService.generate(req);
+        log.info("Generating quiz for session={}, difficulty={}", req.getSessionId(), req.getDifficulty());
+        QuizResponse response = quizService.generate(req);
+        log.info("Generated quiz={} for session={}", response.getQuizId(), req.getSessionId());
+        return response;
     }
 
     @GetMapping("/{quizId}")
@@ -34,7 +42,10 @@ public class QuizController {
 
     @PostMapping("/{quizId}/submit")
     public QuizResultResponse submit(@PathVariable String quizId, @Valid @RequestBody QuizSubmitRequest req) {
-        return quizService.submit(quizId, req);
+        log.info("Submitting quiz={} with {} answers", quizId, req.getAnswers().size());
+        QuizResultResponse response = quizService.submit(quizId, req);
+        log.info("Quiz={} submitted, passed={}, score={}", quizId, response.isPassed(), response.getScorePercent());
+        return response;
     }
 
     @GetMapping("/{quizId}/result")

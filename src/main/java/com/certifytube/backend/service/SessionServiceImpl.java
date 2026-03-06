@@ -57,4 +57,17 @@ public class SessionServiceImpl implements SessionService {
     public List<Session> getAllByUserId(String userId) {
         return sessionRepository.findByUserIdOrderByCreatedAtUtcDesc(userId);
     }
+
+    @Override
+    @Transactional
+    public void deleteSession(String sessionId, String userId) {
+        Session session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new NotFoundException("Session not found: " + sessionId));
+        
+        if (!session.getUserId().equals(userId)) {
+            throw new org.springframework.security.access.AccessDeniedException("Session does not belong to authenticated user");
+        }
+        
+        sessionRepository.delete(session);
+    }
 }

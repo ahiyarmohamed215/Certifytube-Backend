@@ -8,6 +8,7 @@ import com.certifytube.backend.util.StemCategoryUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -19,6 +20,7 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class QuizService {
@@ -177,16 +179,12 @@ public class QuizService {
                             + formatEngagementThresholdForMessage() + ") to unlock new attempts.");
         }
 
-        // --- Idempotency: return existing quiz if recently generated ---
+        // --- Idempotency: return existing quiz if it exists for this session ---
         Optional<Quiz> recentQuiz = quizRepository.findTopBySessionIdAndUserIdOrderByCreatedAtUtcDesc(
                 session.getSessionId(), user.getId());
         if (recentQuiz.isPresent()) {
-            Quiz existing = recentQuiz.get();
-            if (existing.getCreatedAtUtc() != null
-                    && Duration.between(existing.getCreatedAtUtc(), Instant.now())
-                            .getSeconds() < IDEMPOTENCY_WINDOW_SEC) {
-                return getQuizForCurrentUser(existing.getQuizId());
-            }
+            log.info("Returning already generated quiz={} for session={}", recentQuiz.get().getQuizId(), session.getSessionId());
+            return getQuizForCurrentUser(recentQuiz.get().getQuizId());
         }
 
         // Get video duration from events
@@ -222,6 +220,7 @@ public class QuizService {
                 .totalQuestions(drafts.size())
                 .createdAtUtc(Instant.now())
                 .build());
+        log.info("Saved Quiz generated for session={} into DB", session.getSessionId());
 
         int pos = 1;
         for (QuestionDraft d : drafts) {
@@ -236,6 +235,7 @@ public class QuizService {
                     .explanationText(d.explanation())
                     .build());
         }
+        log.info("Saved {} QuizQuestions into DB for quizId={}", drafts.size(), quiz.getQuizId());
 
         return getQuizForCurrentUser(quiz.getQuizId());
     }
@@ -320,6 +320,7 @@ public class QuizService {
                 .passedFlag(passed)
                 .createdAtUtc(Instant.now())
                 .build());
+        log.info("Saved QuizAttempt for session={} to DB: passed={}, score={}", quiz.getSessionId(), passed, score);
 
         String certId = null;
         String verifyLink = null;

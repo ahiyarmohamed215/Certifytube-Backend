@@ -170,6 +170,13 @@ POST /api/sessions/end?sessionId=<sessionId>
 ```
 **Call this AFTER flushing the final event batch.** The session must be ended before analysis.
 
+### Delete Session 
+```
+DELETE /api/sessions/<sessionId>
+→ { "message": "Session deleted successfully" }
+```
+Learners can delete their own sessions to remove them from history or "Continue Watching". This cascades to delete any related engagement results or quizzes.
+
 ### Step 4: Analyze Engagement (STEM only)
 
 > **⚠️ Non-STEM videos cannot be analyzed.** Backend returns an error if attempted.
