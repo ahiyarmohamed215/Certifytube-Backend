@@ -46,7 +46,7 @@ public class SessionController {
         String stemMessage = null;
         YouTubeVideoCache videoCache = videoCacheRepository.findByVideoId(req.getVideoId()).orElse(null);
         if (videoCache != null) {
-            stemEligible = StemCategoryUtil.isStemCategory(videoCache.getCategoryId());
+            stemEligible = StemCategoryUtil.isStemVideo(videoCache);
         }
         if (!stemEligible) {
             stemMessage = "Only STEM-based skill videos (Science, Technology, Engineering, Mathematics) "

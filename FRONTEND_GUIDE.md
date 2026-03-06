@@ -376,6 +376,10 @@ All error responses follow: `{ "status": 4xx, "error": "...", "message": "..." }
 
 Only videos in YouTube categories **26** (How-to & Style), **27** (Education), and **28** (Science & Technology) are STEM-eligible.
 
+**Keyword Fallback:**  
+Because many YouTube creators miscategorize their coding and tech tutorials under "People & Blogs" or "Entertainment", the backend also applies a **Keyword Fallback** on the video title and description.
+If a video contains STEM keywords (e.g., *oop, python, machine learning, calculus, developer, docker*), it will be flagged as `stemEligible = true` regardless of its official YouTube category.
+
 For non-STEM videos:
 - ❌ No engagement analysis
 - ❌ No quiz generation

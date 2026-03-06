@@ -388,7 +388,7 @@ public class QuizService {
     // --- STEM check ---
     private boolean checkStemEligible(String videoId) {
         YouTubeVideoCache videoCache = videoCacheRepository.findByVideoId(videoId).orElse(null);
-        return videoCache != null && StemCategoryUtil.isStemCategory(videoCache.getCategoryId());
+        return StemCategoryUtil.isStemVideo(videoCache);
     }
 
     // --- Question extraction from ML response ---

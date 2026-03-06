@@ -87,8 +87,7 @@ public class SessionAnalyzeServiceImpl implements SessionAnalyzeService {
 
         // --- STEM gate: block non-STEM videos ---
         YouTubeVideoCache videoCache = videoCacheRepository.findByVideoId(session.getVideoId()).orElse(null);
-        String categoryId = videoCache != null ? videoCache.getCategoryId() : null;
-        if (!StemCategoryUtil.isStemCategory(categoryId)) {
+        if (!StemCategoryUtil.isStemVideo(videoCache)) {
             throw new IllegalStateException(
                     "Engagement analysis is only available for STEM-based skill videos. "
                             + "This video is not eligible for certification.");

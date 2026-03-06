@@ -74,7 +74,7 @@ public class DashboardService {
         Optional<YouTubeVideoCache> videoCache = videoCacheRepository.findByVideoId(session.getVideoId());
         if (videoCache.isPresent()) {
             thumbnailUrl = videoCache.get().getThumbnailUrl() != null ? videoCache.get().getThumbnailUrl() : "";
-            stemEligible = StemCategoryUtil.isStemCategory(videoCache.get().getCategoryId());
+            stemEligible = StemCategoryUtil.isStemVideo(videoCache.get());
         }
 
         // Get engagement score
