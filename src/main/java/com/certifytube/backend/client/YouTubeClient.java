@@ -63,6 +63,10 @@ public class YouTubeClient {
     }
 
     public String fetchVideoById(String videoId) {
+        return fetchVideosByIds(videoId);
+    }
+
+    public String fetchVideosByIds(String videoIdsCommaSeparated) {
         String key = youtubeApiKey == null ? "" : youtubeApiKey.trim();
         if (key.isBlank()) {
             throw new IllegalStateException("youtube.api-key is missing");
@@ -70,7 +74,7 @@ public class YouTubeClient {
 
         String url = UriComponentsBuilder.fromPath("/videos")
                 .queryParam("part", "snippet")
-                .queryParam("id", videoId)
+                .queryParam("id", videoIdsCommaSeparated)
                 .queryParam("key", key)
                 .encode()
                 .build()

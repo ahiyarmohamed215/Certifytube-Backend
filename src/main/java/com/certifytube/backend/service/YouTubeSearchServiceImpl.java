@@ -242,19 +242,17 @@ public class YouTubeSearchServiceImpl implements YouTubeSearchService {
             return videos;
         }
 
+        List<String> videoIdsList = new ArrayList<>();
         for (JsonNode item : root.path("items")) {
             String videoId = item.path("id").path("videoId").asText("");
-            if (videoId.isBlank()) {
-                continue;
-            }
-
+            if (videoId.isBlank()) continue;
+            
             JsonNode snippet = item.path("snippet");
             String title = snippet.path("title").asText("");
             String channelTitle = snippet.path("channelTitle").asText("");
             String description = snippet.path("description").asText("");
             String publishedAt = snippet.path("publishedAt").asText("");
             String thumbnailUrl = resolveThumbnail(snippet.path("thumbnails"));
-            String categoryId = item.path("snippet").path("categoryId").asText("");
 
             videos.add(YouTubeVideoDto.builder()
                     .videoId(videoId)
@@ -264,14 +262,49 @@ public class YouTubeSearchServiceImpl implements YouTubeSearchService {
                     .publishedAt(publishedAt)
                     .thumbnailUrl(thumbnailUrl)
                     .iframeUrl("https://www.youtube.com/embed/" + videoId)
-                    .categoryId(categoryId)
+                    .categoryId("") // Will be enriched
                     .build());
+            
+            videoIdsList.add(videoId);
+            if (videos.size() >= MAX_VIDEOS_PER_QUERY) break;
+        }
 
-            if (videos.size() >= MAX_VIDEOS_PER_QUERY)
-                break;
+        // Enrich with Category IDs (which are NOT returned by the /search endpoint)
+        if (!videoIdsList.isEmpty()) {
+            enrichVideoCategoryIds(videos, videoIdsList);
         }
 
         return videos;
+    }
+
+    private void enrichVideoCategoryIds(List<YouTubeVideoDto> videos, List<String> videoIds) {
+        try {
+            String csv = String.join(",", videoIds);
+            String rawDetailsJson = youTubeClient.fetchVideosByIds(csv);
+            JsonNode root = objectMapper.readTree(rawDetailsJson);
+            
+            // Build a map of videoId -> categoryId
+            java.util.Map<String, String> categoryMap = new java.util.HashMap<>();
+            if (root != null && !root.path("items").isMissingNode()) {
+                for (JsonNode item : root.path("items")) {
+                    String vId = item.path("id").asText("");
+                    String catId = item.path("snippet").path("categoryId").asText("");
+                    if (!vId.isBlank() && !catId.isBlank()) {
+                        categoryMap.put(vId, catId);
+                    }
+                }
+            }
+            
+            // Enrich the DTOs
+            for (YouTubeVideoDto video : videos) {
+                String catId = categoryMap.get(video.getVideoId());
+                if (catId != null) {
+                    video.setCategoryId(catId);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to enrich video category IDs: {}", e.getMessage());
+        }
     }
 
     private YouTubeVideoDto mapVideoById(String rawJson, String fallbackVideoId) {
