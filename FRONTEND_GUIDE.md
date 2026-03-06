@@ -104,10 +104,6 @@ GET /api/dashboard?status=COMPLETED,QUIZ_PENDING,CERTIFIED
 GET /api/youtube/search?q=spring%20boot&limit=20
 → { "query": "...", "count": 20, "videos": [{ "videoId": "...", "title": "...", "iframeUrl": "..." }] }
 ```
-```
-GET /api/youtube/transcript?videoId=<videoId>
-→ { "videoId": "...", "transcript": "...", "transcriptLength": 1234, "fromCache": false, "cachedAtUtc": "..." }
-```
 
 ---
 
@@ -132,7 +128,7 @@ Body: { "videoId": "abc123", "videoTitle": "Video title" }
 - `lastPositionSec` — if resumed, seek the video player to this position
 - `stemEligible` — `true` if video qualifies for certification (STEM content)
 - `stemMessage` — if not STEM, show this message to the user:
-  > *"Only STEM-based skill videos (Science, Technology, Engineering, Mathematics) are eligible for engagement analysis, quiz, and certification. You can still watch this video but no certificate will be issued."*
+  > *"Only STEM-based skill videos (How-to, Science, Technology, Education) are eligible for engagement analysis, quiz, and certification. You can still watch this video but no certificate will be issued."*
 
 **Frontend behavior:**
 - If `resumed == true`: seek video player to `lastPositionSec`
@@ -378,7 +374,7 @@ All error responses follow: `{ "status": 4xx, "error": "...", "message": "..." }
 
 ## 11. STEM Eligibility
 
-Only videos in YouTube categories **27** (Education) and **28** (Science & Technology) are STEM-eligible.
+Only videos in YouTube categories **26** (How-to & Style), **27** (Education), and **28** (Science & Technology) are STEM-eligible.
 
 For non-STEM videos:
 - ❌ No engagement analysis
