@@ -7,15 +7,19 @@ import com.certifytube.backend.model.EngagementResult;
 import com.certifytube.backend.model.Session;
 import com.certifytube.backend.model.SessionFeatures;
 import com.certifytube.backend.model.UserAccount;
+import com.certifytube.backend.model.YouTubeVideoCache;
 import com.certifytube.backend.repository.EngagementResultRepository;
 import com.certifytube.backend.repository.SessionFeaturesRepository;
+import com.certifytube.backend.repository.SessionRepository;
+import com.certifytube.backend.repository.YouTubeVideoCacheRepository;
+import com.certifytube.backend.util.StemCategoryUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
-import java.io.InputStream;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 
@@ -27,8 +31,10 @@ public class SessionAnalyzeServiceImpl implements SessionAnalyzeService {
     private final EngagementResultRepository engagementResultRepository;
     private final SessionFeaturesRepository sessionFeaturesRepository;
     private final SessionService sessionService;
+    private final SessionRepository sessionRepository;
     private final AuthenticatedUserService authenticatedUserService;
     private final MlServiceClient mlServiceClient;
+    private final YouTubeVideoCacheRepository videoCacheRepository;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -40,6 +46,12 @@ public class SessionAnalyzeServiceImpl implements SessionAnalyzeService {
 
     @Value("${ml.default-model}")
     private String defaultModel;
+
+    /**
+     * Idempotency window: if already analyzed within this many seconds, return
+     * cached result.
+     */
+    private static final long IDEMPOTENCY_WINDOW_SEC = 60;
 
     /** The 49 feature keys that the ML API accepts. */
     private static final Set<String> ML_CONTRACT_KEYS = Set.of(
@@ -71,6 +83,34 @@ public class SessionAnalyzeServiceImpl implements SessionAnalyzeService {
         }
         if (session.getEndedAtUtc() == null) {
             throw new IllegalStateException("Session must be ended before analyze. Call /api/sessions/end first");
+        }
+
+        // --- STEM gate: block non-STEM videos ---
+        YouTubeVideoCache videoCache = videoCacheRepository.findByVideoId(session.getVideoId()).orElse(null);
+        String categoryId = videoCache != null ? videoCache.getCategoryId() : null;
+        if (!StemCategoryUtil.isStemCategory(categoryId)) {
+            throw new IllegalStateException(
+                    "Engagement analysis is only available for STEM-based skill videos. "
+                            + "This video is not eligible for certification.");
+        }
+
+        // --- Idempotency: if recently analyzed, return cached result ---
+        Optional<EngagementResult> recent = engagementResultRepository
+                .findTopBySessionIdOrderByCreatedAtUtcDesc(sessionId);
+        if (recent.isPresent()) {
+            EngagementResult cached = recent.get();
+            if (cached.getCreatedAtUtc() != null
+                    && Duration.between(cached.getCreatedAtUtc(), Instant.now())
+                            .getSeconds() < IDEMPOTENCY_WINDOW_SEC) {
+                return SessionAnalyzeResponse.builder()
+                        .sessionId(sessionId)
+                        .model(cached.getModelUsed())
+                        .engagementScore(cached.getEngagementScore())
+                        .threshold(cached.getThreshold())
+                        .status(cached.getStatus())
+                        .explanation(cached.getExplanation())
+                        .build();
+            }
         }
 
         // Resolve model
@@ -134,7 +174,14 @@ public class SessionAnalyzeServiceImpl implements SessionAnalyzeService {
             throw new RuntimeException("Failed to save ML engagement result", e);
         }
 
-        // 5) Build response for frontend
+        // 5) Update session status
+        if ("ENGAGED".equals(status)) {
+            session.setStatus("QUIZ_PENDING");
+        }
+        // If NOT_ENGAGED, keep COMPLETED so user can rewatch
+        sessionRepository.save(session);
+
+        // 6) Build response for frontend
         return SessionAnalyzeResponse.builder()
                 .sessionId(sessionId)
                 .model(resolvedModel)
@@ -142,8 +189,6 @@ public class SessionAnalyzeServiceImpl implements SessionAnalyzeService {
                 .threshold(engagementThreshold)
                 .status(status)
                 .explanation(explanation)
-                .topPositive(topPositive)
-                .topNegative(topNegative)
                 .build();
     }
 

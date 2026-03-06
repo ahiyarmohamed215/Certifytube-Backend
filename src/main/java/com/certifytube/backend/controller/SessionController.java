@@ -5,8 +5,11 @@ import com.certifytube.backend.dto.StartSessionResponse;
 import com.certifytube.backend.dto.EndSessionResponse;
 import com.certifytube.backend.model.Session;
 import com.certifytube.backend.model.UserAccount;
+import com.certifytube.backend.model.YouTubeVideoCache;
+import com.certifytube.backend.repository.YouTubeVideoCacheRepository;
 import com.certifytube.backend.service.AuthenticatedUserService;
 import com.certifytube.backend.service.SessionService;
+import com.certifytube.backend.util.StemCategoryUtil;
 import jakarta.validation.Valid;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.*;
@@ -16,24 +19,52 @@ public class SessionController {
 
     private final SessionService sessionService;
     private final AuthenticatedUserService authenticatedUserService;
+    private final YouTubeVideoCacheRepository videoCacheRepository;
 
-    public SessionController(SessionService sessionService, AuthenticatedUserService authenticatedUserService) {
+    public SessionController(SessionService sessionService,
+            AuthenticatedUserService authenticatedUserService,
+            YouTubeVideoCacheRepository videoCacheRepository) {
         this.sessionService = sessionService;
         this.authenticatedUserService = authenticatedUserService;
+        this.videoCacheRepository = videoCacheRepository;
     }
 
-    @PostMapping({"/api/sessions/start", "/start_session"})
+    @PostMapping({ "/api/sessions/start", "/start_session" })
     public StartSessionResponse startSession(@Valid @RequestBody StartSessionRequest req) {
         UserAccount user = authenticatedUserService.currentUser();
-        Session s = sessionService.startSession(
-                String.valueOf(user.getId()),
-                req.getVideoId(),
-                req.getVideoTitle()
-        );
-        return new StartSessionResponse(s.getSessionId());
+        String userId = String.valueOf(user.getId());
+
+        // Check for resume (existing open session)
+        Session s = sessionService.startSession(userId, req.getVideoId(), req.getVideoTitle());
+        boolean resumed = s.getCreatedAtUtc() != null
+                && s.getEndedAtUtc() == null
+                && s.getLastPositionSec() != null
+                && s.getLastPositionSec() > 0;
+
+        // Look up STEM eligibility from YouTube video cache
+        boolean stemEligible = false;
+        String stemMessage = null;
+        YouTubeVideoCache videoCache = videoCacheRepository.findByVideoId(req.getVideoId()).orElse(null);
+        if (videoCache != null) {
+            stemEligible = StemCategoryUtil.isStemCategory(videoCache.getCategoryId());
+        }
+        if (!stemEligible) {
+            stemMessage = "Only STEM-based skill videos (Science, Technology, Engineering, Mathematics) "
+                    + "are eligible for engagement analysis, quiz, and certification. "
+                    + "You can still watch this video but no certificate will be issued.";
+        }
+
+        return StartSessionResponse.builder()
+                .sessionId(s.getSessionId())
+                .resumed(resumed)
+                .lastPositionSec(s.getLastPositionSec())
+                .videoDurationSec(s.getVideoDurationSec())
+                .stemEligible(stemEligible)
+                .stemMessage(stemMessage)
+                .build();
     }
 
-    @PostMapping({"/api/sessions/end", "/end_session"})
+    @PostMapping({ "/api/sessions/end", "/end_session" })
     public EndSessionResponse endSession(@RequestParam String sessionId) {
         UserAccount user = authenticatedUserService.currentUser();
         Session session = sessionService.getById(sessionId);

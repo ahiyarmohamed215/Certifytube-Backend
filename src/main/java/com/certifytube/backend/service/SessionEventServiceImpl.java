@@ -46,6 +46,10 @@ public class SessionEventServiceImpl implements SessionEventService {
 
         List<SessionEvent> entities = new ArrayList<>();
 
+        // Track latest position per session to update progress
+        Map<String, Double> latestPositionPerSession = new HashMap<>();
+        Map<String, Double> latestDurationPerSession = new HashMap<>();
+
         for (int i = 0; i < events.size(); i++) {
             EventBatchRequest req = events.get(i);
 
@@ -110,9 +114,34 @@ public class SessionEventServiceImpl implements SessionEventService {
                     .build();
 
             entities.add(entity);
+
+            // Track latest position for progress update
+            if (req.getCurrentTimeSec() != null) {
+                Double prev = latestPositionPerSession.get(req.getSessionId());
+                if (prev == null || req.getCurrentTimeSec() > prev) {
+                    latestPositionPerSession.put(req.getSessionId(), req.getCurrentTimeSec());
+                }
+            }
+            if (req.getVideoDurationSec() != null && req.getVideoDurationSec() > 0) {
+                latestDurationPerSession.put(req.getSessionId(), req.getVideoDurationSec());
+            }
         }
 
         eventRepository.saveAll(entities);
+
+        // Update session progress (lastPositionSec + videoDurationSec)
+        for (Map.Entry<String, Double> entry : latestPositionPerSession.entrySet()) {
+            Session session = sessionCache.get(entry.getKey());
+            if (session != null) {
+                session.setLastPositionSec(entry.getValue());
+                Double duration = latestDurationPerSession.get(entry.getKey());
+                if (duration != null) {
+                    session.setVideoDurationSec(duration);
+                }
+                sessionRepository.save(session);
+            }
+        }
+
         return EventBatchResponse.builder()
                 .saved(entities.size())
                 .rejected(errors.size())

@@ -18,8 +18,7 @@ public class YouTubeController {
     @GetMapping("/search")
     public YouTubeSearchResponse search(
             @RequestParam("q") String query,
-            @RequestParam(name = "limit", required = false, defaultValue = "20") int limit
-    ) {
+            @RequestParam(name = "limit", required = false, defaultValue = "20") int limit) {
         return youTubeSearchService.searchVideos(query, limit);
     }
 }

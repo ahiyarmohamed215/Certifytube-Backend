@@ -4,6 +4,7 @@ import com.certifytube.backend.client.MlServiceClient;
 import com.certifytube.backend.dto.*;
 import com.certifytube.backend.model.*;
 import com.certifytube.backend.repository.*;
+import com.certifytube.backend.util.StemCategoryUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -12,8 +13,11 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
@@ -28,16 +32,26 @@ public class QuizService {
     private final AuthenticatedUserService authenticatedUserService;
     private final CertificateService certificateService;
     private final MlServiceClient mlServiceClient;
-    private final QuizGenerationService quizGenerationService;
+    private final YouTubeVideoCacheRepository videoCacheRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @Value("${quiz.min-engagement-score:85}")
+    private static final Pattern LETTER_CHOICE_PATTERN = Pattern.compile("^\\(?([a-z])\\)?(?:[\\).:\\-].*)?$");
+    private static final Pattern OPTION_PREFIX_PATTERN = Pattern.compile("^option\\s+([a-z])$");
+    private static final Pattern NUMBER_CHOICE_PATTERN = Pattern.compile("^\\(?([1-9][0-9]*)\\)?(?:[\\).:\\-].*)?$");
+
+    /**
+     * Idempotency window: if quiz was generated within this many seconds, return
+     * it.
+     */
+    private static final long IDEMPOTENCY_WINDOW_SEC = 60;
+
+    @Value("${quiz.min-engagement-score:0.85}")
     private double minEngagementScore;
 
     @Value("${quiz.pass-score:80}")
     private double passScore;
 
-    @Value("${quiz.max-failed-attempts:3}")
+    @Value("${quiz.max-failed-attempts:2}")
     private int maxFailedAttempts;
 
     @Value("${app.public-base-url:http://localhost:8080}")
@@ -50,6 +64,23 @@ public class QuizService {
                 .orElseThrow(() -> new IllegalArgumentException("Session not found"));
         if (!Objects.equals(session.getUserId(), String.valueOf(user.getId()))) {
             throw new AccessDeniedException("Session does not belong to authenticated user");
+        }
+
+        // --- STEM gate ---
+        boolean stemEligible = checkStemEligible(session.getVideoId());
+        if (!stemEligible) {
+            return QuizEligibilityResponse.builder()
+                    .sessionId(sessionId)
+                    .eligible(false)
+                    .reason("Only STEM-based skill videos are eligible for quiz and certification")
+                    .requiredEngagementScore(minEngagementScore)
+                    .latestEngagementScore(null)
+                    .engagementPassed(false)
+                    .maxFailedAttempts(maxFailedAttempts)
+                    .failedAttemptsUsed(0)
+                    .remainingAttempts(maxFailedAttempts)
+                    .stemEligible(false)
+                    .build();
         }
 
         EngagementResult latest = engagementResultRepository.findTopBySessionIdOrderByCreatedAtUtcDesc(sessionId)
@@ -65,6 +96,7 @@ public class QuizService {
                     .maxFailedAttempts(maxFailedAttempts)
                     .failedAttemptsUsed(0)
                     .remainingAttempts(maxFailedAttempts)
+                    .stemEligible(true)
                     .build();
         }
 
@@ -81,6 +113,7 @@ public class QuizService {
                     .maxFailedAttempts(maxFailedAttempts)
                     .failedAttemptsUsed(0)
                     .remainingAttempts(maxFailedAttempts)
+                    .stemEligible(true)
                     .build();
         }
 
@@ -88,8 +121,7 @@ public class QuizService {
         int failedUsed = (int) quizAttemptRepository.countFailedAttemptsForSessionSince(
                 user.getId(),
                 sessionId,
-                windowStart
-        );
+                windowStart);
         int remaining = Math.max(maxFailedAttempts - failedUsed, 0);
         boolean eligible = failedUsed < maxFailedAttempts;
         String reason = eligible
@@ -106,6 +138,7 @@ public class QuizService {
                 .maxFailedAttempts(maxFailedAttempts)
                 .failedAttemptsUsed(failedUsed)
                 .remainingAttempts(remaining)
+                .stemEligible(true)
                 .build();
     }
 
@@ -119,7 +152,14 @@ public class QuizService {
             throw new AccessDeniedException("Session does not belong to authenticated user");
         }
 
-        EngagementResult latest = engagementResultRepository.findTopBySessionIdOrderByCreatedAtUtcDesc(req.getSessionId())
+        // --- STEM gate ---
+        if (!checkStemEligible(session.getVideoId())) {
+            throw new IllegalStateException(
+                    "Only STEM-based skill videos are eligible for quiz and certification");
+        }
+
+        EngagementResult latest = engagementResultRepository
+                .findTopBySessionIdOrderByCreatedAtUtcDesc(req.getSessionId())
                 .orElseThrow(() -> new IllegalStateException("Analyze session first"));
 
         if (latest.getEngagementScore() == null || latest.getEngagementScore() < minEngagementScore) {
@@ -130,25 +170,42 @@ public class QuizService {
         long failedAttemptsInWindow = quizAttemptRepository.countFailedAttemptsForSessionSince(
                 user.getId(),
                 session.getSessionId(),
-                engagementWindowStart
-        );
+                engagementWindowStart);
         if (failedAttemptsInWindow >= maxFailedAttempts) {
             throw new IllegalStateException(
                     "Maximum failed quiz attempts reached. Rewatch the video and analyze again (engagement >= "
-                            + (int) minEngagementScore + ") to unlock new attempts."
-            );
+                            + formatEngagementThresholdForMessage() + ") to unlock new attempts.");
         }
 
-        double videoDurationSec = sessionEventRepository.findBySessionIdOrderByCreatedAtUtcAsc(req.getSessionId()).stream()
+        // --- Idempotency: return existing quiz if recently generated ---
+        Optional<Quiz> recentQuiz = quizRepository.findTopBySessionIdAndUserIdOrderByCreatedAtUtcDesc(
+                session.getSessionId(), user.getId());
+        if (recentQuiz.isPresent()) {
+            Quiz existing = recentQuiz.get();
+            if (existing.getCreatedAtUtc() != null
+                    && Duration.between(existing.getCreatedAtUtc(), Instant.now())
+                            .getSeconds() < IDEMPOTENCY_WINDOW_SEC) {
+                return getQuizForCurrentUser(existing.getQuizId());
+            }
+        }
+
+        // Get video duration from events
+        double videoDurationSec = sessionEventRepository.findBySessionIdOrderByCreatedAtUtcAsc(req.getSessionId())
+                .stream()
                 .map(SessionEvent::getVideoDurationSec)
                 .filter(Objects::nonNull)
                 .mapToDouble(Double::doubleValue)
                 .max()
                 .orElse(0.0);
 
-        String difficulty = normalizeDifficulty(req.getDifficulty());
-        String transcript = req.getTranscript() == null ? "" : req.getTranscript();
-        Map<String, Object> ml = quizGenerationService.generateQuiz(session.getVideoId(), videoDurationSec, transcript, difficulty);
+        // Call ML server for quiz generation
+        Map<String, Object> ml = mlServiceClient.generateQuiz(
+                session.getSessionId(),
+                session.getVideoId(),
+                videoDurationSec,
+                session.getVideoTitle(),
+                req.getNumQuestions(),
+                req.getIncludeCoding());
 
         List<QuestionDraft> drafts = extractQuestions(ml);
         if (drafts.isEmpty()) {
@@ -161,7 +218,7 @@ public class QuizService {
                 .userId(user.getId())
                 .videoId(session.getVideoId())
                 .videoTitle(session.getVideoTitle())
-                .difficulty(difficulty)
+                .difficulty(req.getDifficulty() != null ? req.getDifficulty() : "medium")
                 .totalQuestions(drafts.size())
                 .createdAtUtc(Instant.now())
                 .build());
@@ -170,7 +227,7 @@ public class QuizService {
         for (QuestionDraft d : drafts) {
             quizQuestionRepository.save(QuizQuestion.builder()
                     .quiz(quiz)
-                    .questionUid(UUID.randomUUID().toString())
+                    .questionUid(d.questionId() != null ? d.questionId() : UUID.randomUUID().toString())
                     .positionIndex(pos++)
                     .questionType(d.questionType())
                     .questionText(d.questionText())
@@ -220,18 +277,32 @@ public class QuizService {
             throw new AccessDeniedException("Quiz does not belong to authenticated user");
         }
 
-        if (quizAttemptRepository.findTopByQuizAndUserIdOrderByCreatedAtUtcDesc(quiz, user.getId()).isPresent()) {
-            throw new IllegalStateException("Quiz already submitted");
+        QuizAttempt latestAttempt = quizAttemptRepository
+                .findTopByQuizAndUserIdOrderByCreatedAtUtcDesc(quiz, user.getId())
+                .orElse(null);
+        if (latestAttempt != null && Boolean.TRUE.equals(latestAttempt.getPassedFlag())) {
+            throw new IllegalStateException("Quiz already passed");
+        }
+
+        Instant attemptWindowStart = resolveAttemptWindowStart(quiz.getSessionId());
+        long failedAttemptsInWindow = quizAttemptRepository.countFailedAttemptsForSessionSince(
+                user.getId(),
+                quiz.getSessionId(),
+                attemptWindowStart);
+        if (failedAttemptsInWindow >= maxFailedAttempts) {
+            throw new IllegalStateException(
+                    "Maximum failed quiz attempts reached. Rewatch the video and analyze again (engagement >= "
+                            + formatEngagementThresholdForMessage() + ") to unlock new attempts.");
         }
 
         List<QuizQuestion> questions = quizQuestionRepository.findByQuizOrderByPositionIndexAsc(quiz);
         int total = questions.size();
         int correct = 0;
+        Map<String, String> providedAnswers = req.getAnswers() == null ? Map.of() : req.getAnswers();
 
         for (QuizQuestion q : questions) {
-            String expected = normalizeAnswer(q.getCorrectAnswer());
-            String provided = normalizeAnswer(req.getAnswers().get(q.getQuestionUid()));
-            if (!expected.isBlank() && expected.equals(provided)) {
+            String provided = resolveProvidedAnswer(providedAnswers, q);
+            if (isCorrectAnswer(q, provided)) {
                 correct++;
             }
         }
@@ -256,6 +327,13 @@ public class QuizService {
             Certificate cert = certificateService.issueIfAbsent(user.getId(), quiz.getSessionId(), attempt);
             certId = cert.getCertificateId();
             verifyLink = publicBaseUrl + "/api/certificates/verify/" + cert.getVerificationToken();
+
+            // Update session status to CERTIFIED
+            Session session = sessionRepository.findById(quiz.getSessionId()).orElse(null);
+            if (session != null) {
+                session.setStatus("CERTIFIED");
+                sessionRepository.save(session);
+            }
         }
 
         return QuizResultResponse.builder()
@@ -267,6 +345,16 @@ public class QuizService {
                 .certificateId(certId)
                 .verificationLink(verifyLink)
                 .build();
+    }
+
+    private Instant resolveAttemptWindowStart(String sessionId) {
+        EngagementResult latest = engagementResultRepository.findTopBySessionIdOrderByCreatedAtUtcDesc(sessionId)
+                .orElseThrow(() -> new IllegalStateException("Analyze session first"));
+
+        if (latest.getEngagementScore() == null || latest.getEngagementScore() < minEngagementScore) {
+            throw new IllegalStateException("Engagement score is below quiz eligibility threshold");
+        }
+        return latest.getCreatedAtUtc() == null ? Instant.EPOCH : latest.getCreatedAtUtc();
     }
 
     @Transactional(readOnly = true)
@@ -292,55 +380,163 @@ public class QuizService {
                 .scorePercent(attempt.getScorePercent())
                 .passed(Boolean.TRUE.equals(attempt.getPassedFlag()))
                 .certificateId(cert == null ? null : cert.getCertificateId())
-                .verificationLink(cert == null ? null : (publicBaseUrl + "/api/certificates/verify/" + cert.getVerificationToken()))
+                .verificationLink(cert == null ? null
+                        : (publicBaseUrl + "/api/certificates/verify/" + cert.getVerificationToken()))
                 .build();
     }
 
-    private String normalizeDifficulty(String difficulty) {
-        if (difficulty == null || difficulty.isBlank()) return "medium";
-        String d = difficulty.trim().toLowerCase();
-        if (d.equals("easy") || d.equals("medium") || d.equals("hard")) return d;
-        return "medium";
+    // --- STEM check ---
+    private boolean checkStemEligible(String videoId) {
+        YouTubeVideoCache videoCache = videoCacheRepository.findByVideoId(videoId).orElse(null);
+        return videoCache != null && StemCategoryUtil.isStemCategory(videoCache.getCategoryId());
     }
 
+    // --- Question extraction from ML response ---
     private List<QuestionDraft> extractQuestions(Map<String, Object> ml) {
         Object raw = ml.get("questions");
-        if (!(raw instanceof List<?> list)) return List.of();
+        if (!(raw instanceof List<?> list))
+            return List.of();
 
         List<QuestionDraft> out = new ArrayList<>();
         for (Object obj : list) {
-            if (!(obj instanceof Map<?, ?> m)) continue;
+            if (!(obj instanceof Map<?, ?> m))
+                continue;
 
+            String qId = str(m.get("question_id"), null);
             String qType = str(m.get("type"), "mcq");
             String qText = str(m.get("question"), "");
             List<String> options = toStringList(m.get("options"));
-            String answer = str(m.get("answer"), "");
+            // ML returns "correct_answer", fallback to "answer" for compatibility
+            String answer = str(m.get("correct_answer"), str(m.get("answer"), ""));
             String explanation = str(m.get("explanation"), "");
+            String difficulty = str(m.get("difficulty"), "medium");
 
-            if (qText.isBlank() || answer.isBlank()) continue;
-            out.add(new QuestionDraft(qType, qText, options, answer, explanation));
+            if (qText.isBlank() || answer.isBlank())
+                continue;
+            out.add(new QuestionDraft(qId, qType, qText, options, answer, explanation, difficulty));
         }
         return out;
     }
 
     private List<String> toStringList(Object o) {
-        if (!(o instanceof List<?> list)) return List.of();
+        if (!(o instanceof List<?> list))
+            return List.of();
         List<String> out = new ArrayList<>();
         for (Object v : list) {
-            if (v != null && !v.toString().isBlank()) out.add(v.toString());
+            if (v != null && !v.toString().isBlank())
+                out.add(v.toString());
         }
         return out;
     }
 
     private String str(Object v, String def) {
-        if (v == null) return def;
+        if (v == null)
+            return def;
         String s = v.toString().trim();
         return s.isBlank() ? def : s;
     }
 
     private String normalizeAnswer(String s) {
-        if (s == null) return "";
+        if (s == null)
+            return "";
         return s.trim().toLowerCase().replaceAll("\\s+", " ");
+    }
+
+    private boolean isCorrectAnswer(QuizQuestion question, String providedAnswerRaw) {
+        List<String> options = readOptions(question.getOptionsJson());
+        String expected = canonicalizeAnswer(question.getCorrectAnswer(), options);
+        String provided = canonicalizeAnswer(providedAnswerRaw, options);
+        return !expected.isBlank() && expected.equals(provided);
+    }
+
+    private String canonicalizeAnswer(String answerRaw, List<String> options) {
+        String normalized = normalizeAnswer(answerRaw);
+        if (normalized.isBlank())
+            return "";
+
+        if (!options.isEmpty()) {
+            int optionIndex = resolveOptionIndex(normalized, options);
+            if (optionIndex >= 0 && optionIndex < options.size()) {
+                normalized = normalizeAnswer(options.get(optionIndex));
+            }
+        }
+
+        String normalizedBool = normalizeBooleanToken(normalized);
+        return normalizedBool.isBlank() ? normalized : normalizedBool;
+    }
+
+    private int resolveOptionIndex(String normalizedInput, List<String> options) {
+        if (normalizedInput == null || normalizedInput.isBlank())
+            return -1;
+
+        for (int i = 0; i < options.size(); i++) {
+            if (normalizeAnswer(options.get(i)).equals(normalizedInput)) {
+                return i;
+            }
+        }
+
+        Matcher optionMatcher = OPTION_PREFIX_PATTERN.matcher(normalizedInput);
+        if (optionMatcher.matches()) {
+            int idx = optionMatcher.group(1).charAt(0) - 'a';
+            if (idx >= 0 && idx < options.size())
+                return idx;
+        }
+
+        Matcher letterMatcher = LETTER_CHOICE_PATTERN.matcher(normalizedInput);
+        if (letterMatcher.matches()) {
+            int idx = letterMatcher.group(1).charAt(0) - 'a';
+            if (idx >= 0 && idx < options.size())
+                return idx;
+        }
+
+        Matcher numberMatcher = NUMBER_CHOICE_PATTERN.matcher(normalizedInput);
+        if (numberMatcher.matches()) {
+            int idx = Integer.parseInt(numberMatcher.group(1)) - 1;
+            if (idx >= 0 && idx < options.size())
+                return idx;
+        }
+
+        return -1;
+    }
+
+    private String normalizeBooleanToken(String value) {
+        return switch (value) {
+            case "true", "t", "yes", "y" -> "true";
+            case "false", "f", "no", "n" -> "false";
+            default -> "";
+        };
+    }
+
+    private String resolveProvidedAnswer(Map<String, String> answers, QuizQuestion question) {
+        String direct = answers.get(question.getQuestionUid());
+        if (direct != null)
+            return direct;
+
+        String qKey = "q" + question.getPositionIndex();
+        if (answers.containsKey(qKey))
+            return answers.get(qKey);
+
+        String posKey = String.valueOf(question.getPositionIndex());
+        if (answers.containsKey(posKey))
+            return answers.get(posKey);
+
+        for (Map.Entry<String, String> entry : answers.entrySet()) {
+            String key = entry.getKey();
+            if (key == null)
+                continue;
+            if (key.equalsIgnoreCase(question.getQuestionUid()) || key.equalsIgnoreCase(qKey)
+                    || key.equalsIgnoreCase(posKey)) {
+                return entry.getValue();
+            }
+        }
+        return null;
+    }
+
+    private String formatEngagementThresholdForMessage() {
+        if (minEngagementScore <= 1.0) {
+            return String.format(Locale.US, "%.0f%%", minEngagementScore * 100.0);
+        }
+        return String.format(Locale.US, "%.0f", minEngagementScore);
     }
 
     private String writeJson(Object value) {
@@ -352,19 +548,23 @@ public class QuizService {
     }
 
     private List<String> readOptions(String json) {
-        if (json == null || json.isBlank()) return List.of();
+        if (json == null || json.isBlank())
+            return List.of();
         try {
-            return objectMapper.readValue(json, new TypeReference<List<String>>() {});
+            return objectMapper.readValue(json, new TypeReference<List<String>>() {
+            });
         } catch (Exception e) {
             return List.of();
         }
     }
 
     private record QuestionDraft(
+            String questionId,
             String questionType,
             String questionText,
             List<String> options,
             String correctAnswer,
-            String explanation
-    ) {}
+            String explanation,
+            String difficulty) {
+    }
 }

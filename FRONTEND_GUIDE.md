@@ -41,26 +41,102 @@ POST /api/auth/logout
 
 ---
 
-## 2. Video Search (Public)
+## 2. Dashboard (Home Page Data)
+
+After login, call the dashboard endpoint to populate the home page. Use the `status` query param to fetch only the statuses needed for each page.
+
+### Get Dashboard (all statuses)
+```
+GET /api/dashboard
+→ {
+    "activeVideos": [...],
+    "completedVideos": [...],
+    "quizPendingVideos": [...],
+    "certifiedVideos": [...]
+  }
+```
+
+### Filtered by Status
+```
+GET /api/dashboard?status=ACTIVE
+→ Only "Continue Watching" videos
+
+GET /api/dashboard?status=COMPLETED,QUIZ_PENDING,CERTIFIED
+→ My Learnings / History page
+```
+
+**Each video item:**
+```json
+{
+  "sessionId": "uuid",
+  "videoId": "abc123",
+  "videoTitle": "Video title",
+  "thumbnailUrl": "https://...",
+  "lastPositionSec": 120.5,
+  "videoDurationSec": 600.0,
+  "progressPercent": 20.08,
+  "status": "ACTIVE",
+  "stemEligible": true,
+  "engagementScore": null,
+  "certificateId": null,
+  "createdAt": "2026-03-04T15:30:00Z"
+}
+```
+
+**Session statuses:**
+
+| Status | Meaning | Frontend Action |
+|--------|---------|-----------------|
+| `ACTIVE` | Watching in progress | Show "Continue Watching" → click resumes session |
+| `COMPLETED` | Session ended, pending analysis | Show "Analyze Engagement" (STEM only) |
+| `QUIZ_PENDING` | Engagement passed (≥ 0.85) | Show "Take Quiz" |
+| `CERTIFIED` | Quiz passed, certificate issued | Show "View Certificate" |
+
+**Frontend page mapping:**
+- **Home page:** `GET /api/dashboard?status=ACTIVE` → "Continue Watching" section
+- **My Learnings:** `GET /api/dashboard?status=COMPLETED,QUIZ_PENDING,CERTIFIED` → History / progress
+
+---
+
+## 3. Video Search (Public)
 
 ```
 GET /api/youtube/search?q=spring%20boot&limit=20
 → { "query": "...", "count": 20, "videos": [{ "videoId": "...", "title": "...", "iframeUrl": "..." }] }
 ```
+```
+GET /api/youtube/transcript?videoId=<videoId>
+→ { "videoId": "...", "transcript": "...", "transcriptLength": 1234, "fromCache": false, "cachedAtUtc": "..." }
+```
 
 ---
 
-## 3. Session Lifecycle
-
-This is the core workflow. Order matters.
+## 4. Session Lifecycle
 
 ### Step 1: Start Session
 ```
 POST /api/sessions/start
 Body: { "videoId": "abc123", "videoTitle": "Video title" }
-→ { "sessionId": "uuid" }
+→ {
+    "sessionId": "uuid",
+    "resumed": false,
+    "lastPositionSec": null,
+    "videoDurationSec": null,
+    "stemEligible": true,
+    "stemMessage": null
+  }
 ```
-Save the `sessionId` — you'll need it for everything.
+
+**New fields explained:**
+- `resumed` — `true` if an existing open session was found (user returning to same video)
+- `lastPositionSec` — if resumed, seek the video player to this position
+- `stemEligible` — `true` if video qualifies for certification (STEM content)
+- `stemMessage` — if not STEM, show this message to the user:
+  > *"Only STEM-based skill videos (Science, Technology, Engineering, Mathematics) are eligible for engagement analysis, quiz, and certification. You can still watch this video but no certificate will be issued."*
+
+**Frontend behavior:**
+- If `resumed == true`: seek video player to `lastPositionSec`
+- If `stemEligible == false`: show `stemMessage` banner, hide Analyze/Quiz/Certificate buttons
 
 ### Step 2: Send Events (during video playback)
 
@@ -89,6 +165,7 @@ Body: [
 - Use `performance.now()` for `clientEventMs` (NOT `Date.now()`)
 - Send `videoDurationSec` in at least the first and last checkpoint
 - When video ends naturally, send an event with `eventType: "ended"`
+- Backend auto-tracks `lastPositionSec` from events (for session resume)
 
 ### Step 3: End Session
 ```
@@ -97,7 +174,10 @@ POST /api/sessions/end?sessionId=<sessionId>
 ```
 **Call this AFTER flushing the final event batch.** The session must be ended before analysis.
 
-### Step 4: Analyze Engagement
+### Step 4: Analyze Engagement (STEM only)
+
+> **⚠️ Non-STEM videos cannot be analyzed.** Backend returns an error if attempted.
+
 ```
 POST /api/sessions/<sessionId>/analyze
 POST /api/sessions/<sessionId>/analyze?model=ebm    ← optional, default: xgboost
@@ -111,27 +191,24 @@ POST /api/sessions/<sessionId>/analyze?model=ebm    ← optional, default: xgboo
   "engagementScore": 0.92,
   "threshold": 0.85,
   "status": "ENGAGED",
-  "explanation": "The primary factors influencing this score were...",
-  "topPositive": [
-    { "feature": "watch_time_ratio", "shap_value": 0.45, "feature_value": 0.837, "behavior_category": "coverage" }
-  ],
-  "topNegative": [
-    { "feature": "num_buffering_events", "shap_value": -0.03, "feature_value": 3.0, "behavior_category": "playback_quality" }
-  ]
+  "explanation": "The primary factors influencing this score were..."
 }
 ```
 
 **Notes:**
 - `engagementScore` is 0.0–1.0 (probability)
 - `status` is `"ENGAGED"` or `"NOT_ENGAGED"` (backend decides using threshold)
-- `topPositive` / `topNegative` contain the top 3 features pushing toward/against engagement
-- For XGBoost: each contributor has `shap_value`
-- For EBM: each contributor has `contribution`
 - The `model` query param is optional. Default: `xgboost`
+- **Idempotency:** if called again within 60 seconds, returns the cached result (prevents double-clicks)
+- After analysis: if engaged → session moves to `QUIZ_PENDING` status
+
+**Frontend tip — disable the Analyze button** after the first click until the response comes back.
 
 ---
 
-## 4. Quiz Flow
+## 5. Quiz Flow
+
+> **⚠️ Non-STEM videos are not eligible for quiz.** `eligibility` will return `eligible: false`.
 
 ### Check Eligibility
 ```
@@ -143,9 +220,10 @@ GET /api/quiz/eligibility?sessionId=<sessionId>
     "requiredEngagementScore": 0.85,
     "latestEngagementScore": 0.92,
     "engagementPassed": true,
-    "maxFailedAttempts": 3,
+    "maxFailedAttempts": 2,
     "failedAttemptsUsed": 0,
-    "remainingAttempts": 3
+    "remainingAttempts": 2,
+    "stemEligible": true
   }
 ```
 
@@ -166,6 +244,15 @@ Body: { "sessionId": "uuid", "difficulty": "medium" }
   }
 ```
 
+**Optional fields:**
+- `numQuestions` (Integer) — override number of questions (1–20)
+- `includeCoding` (Boolean) — include coding questions
+
+**Notes:**
+- Backend auto-fetches transcript from YouTube (via ML server) — no need to send transcript
+- **Idempotency:** if called again within 60 seconds, returns the existing quiz
+- **Disable the Generate button** after click to prevent duplicate calls
+
 ### Submit Quiz
 ```
 POST /api/quiz/<quizId>/submit
@@ -180,6 +267,8 @@ Body: { "answers": { "q1": "A", "q2": "true", "q3": "fill_value" } }
     "verificationLink": "http://localhost:8080/api/certificates/verify/<token>"
   }
 ```
+`answers` keys should use `questionId` from quiz response; fallback `q1`, `q2`, ... is accepted.
+After 2 failed attempts in the current engagement window, learner must rewatch + analyze again.
 
 ### Get Quiz / Result
 ```
@@ -189,7 +278,7 @@ GET /api/quiz/<quizId>/result   → same shape as submit
 
 ---
 
-## 5. Certificates
+## 6. Certificates
 
 ### Get Certificate (owner only)
 ```
@@ -211,7 +300,7 @@ GET /api/certificates/verify/<verificationToken>
 
 ---
 
-## 6. Admin Panel (ADMIN role only)
+## 7. Admin Panel (ADMIN role only)
 
 All endpoints require `ROLE_ADMIN`. Any non-admin user gets `403`.
 
@@ -231,12 +320,13 @@ All endpoints require `ROLE_ADMIN`. Any non-admin user gets `403`.
 
 ---
 
-## 7. Recommended Page Structure
+## 8. Recommended Page Structure
 
 ```
 /                    → Search page (public)
 /login               → Login form
 /signup              → Signup form
+/home                → Dashboard (Continue Watching + My Learnings)
 /watch/:videoId      → Video player + event tracking
 /analyze/:sessionId  → Engagement results
 /quiz/:quizId        → Quiz UI
@@ -247,32 +337,56 @@ All endpoints require `ROLE_ADMIN`. Any non-admin user gets `403`.
 
 ---
 
-## 8. Complete User Flow (Sequence)
+## 9. Complete User Flow (Sequence)
 
 ```
 1. User signs up or logs in              → store JWT
-2. User searches for a video             → GET /api/youtube/search
-3. User clicks a video                   → POST /api/sessions/start
-4. Video plays, events stream            → POST /api/events/batch (every 5-10s)
-5. Video ends or user navigates away     → flush events, POST /api/sessions/end
-6. User clicks "Analyze"                 → POST /api/sessions/{id}/analyze
-7. Show engagement results               → display score, status, explanation, contributors
-8. If ENGAGED → show "Take Quiz"         → GET /api/quiz/eligibility
-9. User generates quiz                   → POST /api/quiz/generate
-10. User answers questions               → POST /api/quiz/{id}/submit
-11. If passed → show certificate          → GET /api/certificates/{id}/pdf
-12. Share verification link               → GET /api/certificates/verify/{token}
+2. Home page loads                       → GET /api/dashboard?status=ACTIVE (Continue Watching)
+3. User searches for a video             → GET /api/youtube/search
+4. User clicks a video                   → POST /api/sessions/start
+   - If resumed: seek to lastPositionSec
+   - If !stemEligible: show warning banner
+5. Video plays, events stream            → POST /api/events/batch (every 5-10s)
+6. Video ends or user navigates away     → flush events, POST /api/sessions/end
+7. User clicks "Analyze" (STEM only)     → POST /api/sessions/{id}/analyze
+8. Show engagement results               → display score, status, explanation
+9. If ENGAGED → show "Take Quiz"         → GET /api/quiz/eligibility
+10. User generates quiz                  → POST /api/quiz/generate
+11. User answers questions               → POST /api/quiz/{id}/submit
+12. If passed → show certificate         → GET /api/certificates/{id}/pdf
+13. Share verification link              → GET /api/certificates/verify/{token}
+
+My Learnings page:
+14. Load history                         → GET /api/dashboard?status=COMPLETED,QUIZ_PENDING,CERTIFIED
+15. Click pending video                  → resume session or take next action
 ```
 
 ---
 
-## 9. Error Handling
+## 10. Error Handling
 
 | Status | Meaning | Frontend Action |
-|--------|---------|-----------------|
+|--------|---------|-----------------| 
 | `400` | Validation error | Show error message |
 | `401` | Not authenticated | Clear token → redirect to login |
 | `403` | Forbidden (wrong role/ownership) | Show "Access denied" |
 | `500` | Server error | Show generic error |
 
 All error responses follow: `{ "status": 4xx, "error": "...", "message": "..." }`
+
+---
+
+## 11. STEM Eligibility
+
+Only videos in YouTube categories **27** (Education) and **28** (Science & Technology) are STEM-eligible.
+
+For non-STEM videos:
+- ❌ No engagement analysis
+- ❌ No quiz generation
+- ❌ No certificate
+- ✅ User can still watch the video
+
+The `stemEligible` flag is returned in:
+- `POST /api/sessions/start` → `stemEligible` + `stemMessage`
+- `GET /api/quiz/eligibility` → `stemEligible`
+- `GET /api/dashboard` → each video item has `stemEligible`

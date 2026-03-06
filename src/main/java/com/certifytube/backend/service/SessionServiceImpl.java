@@ -7,6 +7,8 @@ import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -21,6 +23,14 @@ public class SessionServiceImpl implements SessionService {
     @Override
     @Transactional
     public Session startSession(String userId, String videoId, String videoTitle) {
+        // Check for existing open session for this user+video → resume
+        Optional<Session> existing = sessionRepository
+                .findTopByUserIdAndVideoIdAndEndedAtUtcIsNullOrderByCreatedAtUtcDesc(userId, videoId);
+        if (existing.isPresent()) {
+            return existing.get();
+        }
+
+        // No open session → create a new one
         String sessionId = UUID.randomUUID().toString();
         Session s = new Session(sessionId, userId, videoId, videoTitle, Instant.now());
         return sessionRepository.save(s);
@@ -33,13 +43,18 @@ public class SessionServiceImpl implements SessionService {
                 .orElseThrow(() -> new RuntimeException("Session not found"));
 
         session.setEndedAtUtc(Instant.now());
+        session.setStatus("COMPLETED");
         sessionRepository.save(session);
     }
-
 
     @Override
     public Session getById(String sessionId) {
         return sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new NotFoundException("Session not found: " + sessionId));
+    }
+
+    @Override
+    public List<Session> getAllByUserId(String userId) {
+        return sessionRepository.findByUserIdOrderByCreatedAtUtcDesc(userId);
     }
 }

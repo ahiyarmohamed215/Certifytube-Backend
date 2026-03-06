@@ -7,7 +7,6 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import java.time.Instant;
 
-
 @AllArgsConstructor
 @Setter
 @Getter
@@ -34,7 +33,23 @@ public class Session {
     @Column(name = "ended_at_utc")
     private Instant endedAtUtc;
 
-    public Session() {}
+    /** Last known playback position in seconds (for resume). */
+    @Column(name = "last_position_sec")
+    private Double lastPositionSec;
+
+    /** Total video duration in seconds. */
+    @Column(name = "video_duration_sec")
+    private Double videoDurationSec;
+
+    /**
+     * Session lifecycle status: ACTIVE, COMPLETED, QUIZ_PENDING, CERTIFIED.
+     */
+    @Column(name = "status", length = 20, nullable = false)
+    private String status;
+
+    public Session() {
+        this.status = "ACTIVE";
+    }
 
     public Session(String sessionId, String userId, String videoId, String videoTitle, Instant createdAtUtc) {
         this.sessionId = sessionId;
@@ -42,6 +57,7 @@ public class Session {
         this.videoId = videoId;
         this.videoTitle = videoTitle;
         this.createdAtUtc = createdAtUtc;
+        this.status = "ACTIVE";
     }
 
 }

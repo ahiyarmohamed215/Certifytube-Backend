@@ -92,8 +92,10 @@ public class YouTubeClient {
     }
 
     private String maskKey(String key) {
-        if (key == null || key.isBlank()) return "<empty>";
-        if (key.length() <= 8) return "****";
+        if (key == null || key.isBlank())
+            return "<empty>";
+        if (key.length() <= 8)
+            return "****";
         return key.substring(0, 4) + "..." + key.substring(key.length() - 4);
     }
 }

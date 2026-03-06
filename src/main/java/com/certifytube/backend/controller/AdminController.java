@@ -1,5 +1,6 @@
 package com.certifytube.backend.controller;
 
+import com.certifytube.backend.dto.AdminEngagementResponse;
 import com.certifytube.backend.model.*;
 import com.certifytube.backend.service.AdminService;
 import lombok.RequiredArgsConstructor;
@@ -93,5 +94,12 @@ public class AdminController {
     @GetMapping("/stats")
     public Map<String, Object> getStats() {
         return adminService.getStats();
+    }
+
+    // ─── Engagement Results (admin only) ──────────────
+
+    @GetMapping("/engagement-results/{sessionId}")
+    public AdminEngagementResponse getEngagementResult(@PathVariable String sessionId) {
+        return adminService.getEngagementResult(sessionId);
     }
 }

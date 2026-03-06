@@ -18,7 +18,6 @@ import org.springframework.web.util.UriComponentsBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -44,11 +43,11 @@ public class YouTubeSearchServiceImpl implements YouTubeSearchService {
     private static final Pattern YT_WATCH_PATTERN = Pattern.compile("[?&]v=([A-Za-z0-9_-]{11})");
     private static final Pattern YT_SHORTS_PATTERN = Pattern.compile("/shorts/([A-Za-z0-9_-]{11})");
 
-    // YouTube Category IDs for STEM content
-    private static final Set<String> STEM_CATEGORIES = Set.of("27", "28", "30");
+    // YouTube Category IDs for STEM content: 26 = How-to & Style, 27 = Education,
+    // 28 = Science & Technology
+    private static final Set<String> STEM_CATEGORIES = Set.of("26", "27", "28");
 
     private static final Logger log = LoggerFactory.getLogger(YouTubeSearchServiceImpl.class);
-
 
     @Override
     @Transactional
@@ -143,7 +142,8 @@ public class YouTubeSearchServiceImpl implements YouTubeSearchService {
         List<YouTubeVideoDto> out = new ArrayList<>();
 
         for (YouTubeSearchCacheItem item : items) {
-            if (out.size() >= limit) break;
+            if (out.size() >= limit)
+                break;
             YouTubeVideoCache v = item.getVideo();
             out.add(YouTubeVideoDto.builder()
                     .videoId(v.getVideoId())
@@ -205,8 +205,18 @@ public class YouTubeSearchServiceImpl implements YouTubeSearchService {
                 .build();
     }
 
+    private YouTubeVideoCache fetchAndCacheVideo(String videoId) {
+        String rawJson = youTubeClient.fetchVideoById(videoId);
+        YouTubeVideoDto dto = mapVideoById(rawJson, videoId);
+        if (dto == null) {
+            return null;
+        }
+        return upsertVideo(dto);
+    }
+
     private boolean isStale(Instant updatedAtUtc) {
-        if (updatedAtUtc == null) return true;
+        if (updatedAtUtc == null)
+            return true;
         LocalDate updatedDay = updatedAtUtc.atZone(java.time.ZoneOffset.UTC).toLocalDate();
         return !updatedDay.isEqual(LocalDate.now());
     }
@@ -257,7 +267,8 @@ public class YouTubeSearchServiceImpl implements YouTubeSearchService {
                     .categoryId(categoryId)
                     .build());
 
-            if (videos.size() >= MAX_VIDEOS_PER_QUERY) break;
+            if (videos.size() >= MAX_VIDEOS_PER_QUERY)
+                break;
         }
 
         return videos;
@@ -272,7 +283,8 @@ public class YouTubeSearchServiceImpl implements YouTubeSearchService {
         }
 
         JsonNode items = root.path("items");
-        if (items.isMissingNode() || !items.isArray() || items.isEmpty()) return null;
+        if (items.isMissingNode() || !items.isArray() || items.isEmpty())
+            return null;
 
         JsonNode item = items.get(0);
         String videoId = item.path("id").asText(fallbackVideoId);
@@ -297,7 +309,8 @@ public class YouTubeSearchServiceImpl implements YouTubeSearchService {
     }
 
     private Optional<String> extractVideoId(String input) {
-        if (input == null || input.isBlank()) return Optional.empty();
+        if (input == null || input.isBlank())
+            return Optional.empty();
 
         String trimmed = input.trim();
         if (trimmed.matches("^[A-Za-z0-9_-]{11}$")) {
@@ -312,27 +325,33 @@ public class YouTubeSearchServiceImpl implements YouTubeSearchService {
             String query = UriComponentsBuilder.fromUriString(uri).build().getQuery();
             if (query != null) {
                 Matcher m = YT_WATCH_PATTERN.matcher("?" + query);
-                if (m.find()) return Optional.of(m.group(1));
+                if (m.find())
+                    return Optional.of(m.group(1));
             }
         } catch (Exception ignored) {
         }
 
         Matcher shortMatcher = YT_SHORT_PATTERN.matcher(trimmed);
-        if (shortMatcher.find()) return Optional.of(shortMatcher.group(1));
+        if (shortMatcher.find())
+            return Optional.of(shortMatcher.group(1));
 
         Matcher shortsMatcher = YT_SHORTS_PATTERN.matcher(trimmed);
-        if (shortsMatcher.find()) return Optional.of(shortsMatcher.group(1));
+        if (shortsMatcher.find())
+            return Optional.of(shortsMatcher.group(1));
 
         return Optional.empty();
     }
 
     private String resolveThumbnail(JsonNode thumbnails) {
-        if (thumbnails == null || thumbnails.isMissingNode()) return "";
-        String[] order = {"high", "medium", "default"};
+        if (thumbnails == null || thumbnails.isMissingNode())
+            return "";
+        String[] order = { "high", "medium", "default" };
         for (String key : order) {
             String url = thumbnails.path(key).path("url").asText("");
-            if (!url.isBlank()) return url;
+            if (!url.isBlank())
+                return url;
         }
         return "";
     }
+
 }

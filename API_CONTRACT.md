@@ -28,7 +28,19 @@ Response:
 {"query":"spring boot","count":20,"videos":[{"videoId":"...","title":"...","iframeUrl":"https://www.youtube.com/embed/..."}]}
 ```
 
-4. `GET /api/certificates/verify/{token}`  
+4. `GET /api/youtube/transcript?videoId={videoId}`  
+Response:
+```json
+{
+  "videoId":"dQw4w9WgXcQ",
+  "transcript":"cleaned transcript text ...",
+  "transcriptLength":3560,
+  "fromCache":false,
+  "cachedAtUtc":"2026-02-21T15:00:00Z"
+}
+```
+
+5. `GET /api/certificates/verify/{token}`  
 Response:
 ```json
 {"certificateId":"...","certificateNumber":"...","sessionId":"...","userId":1,"scorePercent":84.0,"verificationToken":"...","verificationLink":"...","createdAtUtc":"..."}
@@ -53,22 +65,40 @@ Notes:
 - Protected endpoint (JWT required).
 - Current JWT is revoked server-side by `jti` until token expiry.
 
-3. `POST /api/sessions/start`  
+3. `GET /api/dashboard` or `GET /api/dashboard?status=ACTIVE` or `GET /api/dashboard?status=COMPLETED,QUIZ_PENDING,CERTIFIED`  
+Response:
+```json
+{
+  "activeVideos": [{"sessionId":"uuid","videoId":"abc123","videoTitle":"...","thumbnailUrl":"...","lastPositionSec":120.5,"videoDurationSec":600.0,"progressPercent":20.08,"status":"ACTIVE","stemEligible":true,"engagementScore":null,"certificateId":null,"createdAt":"2026-03-04T15:30:00Z"}],
+  "completedVideos": [...],
+  "quizPendingVideos": [...],
+  "certifiedVideos": [...]
+}
+```
+Notes:
+- Optional `status` query param (comma-separated): filter by session status.
+- If omitted, all statuses returned.
+- Statuses: `ACTIVE`, `COMPLETED`, `QUIZ_PENDING`, `CERTIFIED`.
+- Frontend: Home page → `?status=ACTIVE`, My Learnings → `?status=COMPLETED,QUIZ_PENDING,CERTIFIED`.
+
+4. `POST /api/sessions/start`  
 Request:
 ```json
 {"videoId":"abc123","videoTitle":"Video title"}
 ```
 Response:
 ```json
-{"sessionId":"uuid"}
+{"sessionId":"uuid","resumed":false,"lastPositionSec":null,"videoDurationSec":null,"stemEligible":true,"stemMessage":null}
 ```
 Notes:
 - `user_id` is derived from JWT on backend.
-- Canonical JSON is camelCase (`videoId`, `videoTitle`).
-- Backward-compatible snake_case input aliases are supported (`video_id`, `video_title`).
+- `resumed`: true if returning to same video (existing open session found).
+- `lastPositionSec`: if resumed, frontend should seek video to this position.
+- `stemEligible`: true if video is STEM (YouTube category 27 or 28). Non-STEM videos cannot be analyzed/quizzed/certified.
+- `stemMessage`: warning text for non-STEM videos.
 - Backward-compatible alias exists: `POST /start_session`.
 
-4. `POST /api/events/batch`  
+5. `POST /api/events/batch`  
 Request:
 ```json
 [
@@ -113,7 +143,7 @@ Notes:
 - `clientEventMs` must be monotonic:
   - use `performance.now()` (not `Date.now()`).
 
-5. `POST /api/sessions/{sessionId}/analyze?model=xgboost`  
+6. `POST /api/sessions/{sessionId}/analyze?model=xgboost`  
 Response:
 ```json
 {
@@ -122,49 +152,40 @@ Response:
   "engagementScore":0.92,
   "threshold":0.85,
   "status":"ENGAGED",
-  "explanation":"The primary factors influencing this score were...",
-  "topPositive":[
-    {"feature":"watch_time_ratio","shap_value":0.45,"feature_value":0.837,"behavior_category":"coverage"}
-  ],
-  "topNegative":[
-    {"feature":"num_buffering_events","shap_value":-0.03,"feature_value":3.0,"behavior_category":"playback_quality"}
-  ]
+  "explanation":"The primary factors influencing this score were..."
 }
 ```
 Notes:
-- Backend enforces session ownership (`session.userId == jwt.userId`).
-- Session must be ended before analyze:
-  - call `POST /api/sessions/end?sessionId=<sessionId>` first.
+- **STEM only**: non-STEM videos return error.
+- **Idempotent**: if called again within 60s, returns cached result.
+- Session must be ended before analyze.
 - `model` query param is optional. Default: `xgboost`. Valid: `xgboost`, `ebm`.
-- `engagementScore` is 0.0–1.0 (probability).
-- `status` is `"ENGAGED"` or `"NOT_ENGAGED"` (backend decision).
-- For XGBoost: contributors have `shap_value`.
-- For EBM: contributors have `contribution`.
+- If ENGAGED → session status moves to `QUIZ_PENDING`.
 
-6. `GET /api/quiz/eligibility?sessionId={sessionId}`  
+7. `GET /api/quiz/eligibility?sessionId={sessionId}`  
 Response:
 ```json
 {
   "sessionId":"uuid",
   "eligible":true,
   "reason":"Eligible",
-  "requiredEngagementScore":85.0,
-  "latestEngagementScore":88.4,
+  "requiredEngagementScore":0.85,
+  "latestEngagementScore":0.92,
   "engagementPassed":true,
-  "maxFailedAttempts":3,
+  "maxFailedAttempts":2,
   "failedAttemptsUsed":1,
-  "remainingAttempts":2
+  "remainingAttempts":1
 }
 ```
 Notes:
-- Backend enforces session ownership (`session.userId == jwt.userId`).
+- Backend enforces session ownership.
+- Response now includes `stemEligible` boolean.
+- Non-STEM videos: `eligible: false, reason: "Only STEM-based skill videos are eligible"`.
 
-7. `POST /api/quiz/generate`  
-Frontend must use this canonical path only.  
-Legacy aliases exist in backend for backward compatibility only (`/api/quiz/genrate`, `/api/quizz/generate`, `/api/quizz/genrate`).  
+8. `POST /api/quiz/generate`  
 Request:
 ```json
-{"sessionId":"uuid","difficulty":"medium","transcript":"optional"}
+{"sessionId":"uuid","difficulty":"medium","numQuestions":10,"includeCoding":false}
 ```
 Response:
 ```json
@@ -181,14 +202,17 @@ Response:
 }
 ```
 Notes:
-- Backend enforces session ownership (`session.userId == jwt.userId`).
+- **No transcript needed** — ML server fetches/caches transcripts automatically.
+- **Idempotent**: if called again within 60s, returns existing quiz.
+- `numQuestions` and `includeCoding` are optional.
+- **STEM only**: non-STEM videos return error.
 
-8. `GET /api/quiz/{quizId}`  
+9. `GET /api/quiz/{quizId}`  
 Response: same shape as generate response.
 Notes:
 - Backend enforces quiz ownership (`quiz.userId == jwt.userId`).
 
-9. `POST /api/quiz/{quizId}/submit`  
+10. `POST /api/quiz/{quizId}/submit`  
 Request:
 ```json
 {"answers":{"q1":"A","q2":"true","q3":"fill value"}}
@@ -207,18 +231,20 @@ Response:
 ```
 Notes:
 - Backend enforces quiz ownership (`quiz.userId == jwt.userId`).
+- `answers` keys can be the exact `questionId` values from generate response; fallback `q1`, `q2`, ... is also accepted.
+- Learner can retry after failing. After 2 failed attempts in the same engagement window, learner must rewatch + analyze again before next attempt.
 
-10. `GET /api/quiz/{quizId}/result`  
+11. `GET /api/quiz/{quizId}/result`  
 Response: same shape as submit response.
 Notes:
 - Backend enforces quiz ownership (`quiz.userId == jwt.userId`).
 
-11. `GET /api/certificates/{certificateId}`  
+12. `GET /api/certificates/{certificateId}`  
 Response: certificate metadata.
 Notes:
 - Owner-only endpoint (`certificate.userId == jwt.userId`).
 
-12. `GET /api/certificates/{certificateId}/pdf`  
+13. `GET /api/certificates/{certificateId}/pdf`  
 Response: PDF bytes (`application/pdf`).
 Notes:
 - Owner-only endpoint (`certificate.userId == jwt.userId`).

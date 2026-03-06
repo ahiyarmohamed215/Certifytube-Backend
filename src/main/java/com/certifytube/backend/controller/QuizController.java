@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping({"/api/quiz", "/api/quizz"})
+@RequestMapping("/api/quiz")
 public class QuizController {
 
     private final QuizService quizService;
@@ -22,7 +22,7 @@ public class QuizController {
         return quizService.eligibility(sessionId);
     }
 
-    @PostMapping({"/generate", "/genrate"})
+    @PostMapping("/generate")
     public QuizResponse generate(@Valid @RequestBody QuizGenerateRequest req) {
         return quizService.generate(req);
     }

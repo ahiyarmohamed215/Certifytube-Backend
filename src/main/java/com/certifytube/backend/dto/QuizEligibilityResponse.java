@@ -23,4 +23,5 @@ public class QuizEligibilityResponse {
     private int maxFailedAttempts;
     private int failedAttemptsUsed;
     private int remainingAttempts;
+    private boolean stemEligible;
 }

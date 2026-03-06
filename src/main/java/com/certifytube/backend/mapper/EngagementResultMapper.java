@@ -9,7 +9,5 @@ import org.mapstruct.Mapping;
 public interface EngagementResultMapper {
 
     @Mapping(source = "modelUsed", target = "model")
-    @Mapping(target = "topPositive", ignore = true)
-    @Mapping(target = "topNegative", ignore = true)
     SessionAnalyzeResponse toResponse(EngagementResult result);
 }

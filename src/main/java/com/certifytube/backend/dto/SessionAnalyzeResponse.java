@@ -14,8 +14,4 @@ public class SessionAnalyzeResponse {
     private double threshold; // backend-configured threshold
     private String status; // "ENGAGED" or "NOT_ENGAGED"
     private String explanation; // human-readable text from ML
-
-    // Top contributors (SHAP or EBM depending on model)
-    private Object topPositive;
-    private Object topNegative;
 }
