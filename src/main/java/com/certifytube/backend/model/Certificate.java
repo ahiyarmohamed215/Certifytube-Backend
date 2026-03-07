@@ -43,6 +43,21 @@ public class Certificate {
     @Column(name = "pdf_bytes", nullable = false, columnDefinition = "LONGBLOB")
     private byte[] pdfBytes;
 
+    @Column(name = "final_engagement_score", nullable = false)
+    private Double finalEngagementScore;
+
+    @Column(name = "final_quiz_score", nullable = false)
+    private Double finalQuizScore;
+
+    @Column(name = "learner_name", length = 255)
+    private String learnerName;
+
+    @Column(name = "video_title", length = 512, nullable = false)
+    private String videoTitle;
+
+    @Column(name = "video_id", length = 32, nullable = false)
+    private String videoId;
+
     @Column(name = "created_at_utc", nullable = false)
     private Instant createdAtUtc;
 }
