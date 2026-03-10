@@ -43,7 +43,7 @@ public class CertificateController {
     public CertificateResponse verify(@PathVariable String token) {
         log.info("Verifying certificate with token {}", token);
         CertificateResponse response = certificateService.verify(token);
-        log.info("Certificate {} successfully verified via token", response.getCertificateId());
+        log.info("Certificate {} verified via token, status={}", response.getCertificateId(), response.getStatus());
         return response;
     }
 }

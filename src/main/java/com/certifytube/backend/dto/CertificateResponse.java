@@ -18,11 +18,12 @@ public class CertificateResponse {
     private Long userId; // Will be null in public verify response
     private double scorePercent;
     
-    // New fields
+    // Evidence fields
     private String learnerName;
     private String videoTitle;
     private String videoId;
     private String videoUrl;
+    private String videoDuration; // human-readable, e.g. "12m 30s"
     private Double engagementScore;
     private Double quizScore;
     private Double engagementThreshold;
@@ -30,6 +31,9 @@ public class CertificateResponse {
     private String platformName;
     private String platformAttribution;
 
+    // Status & verification
+    private String status;        // ACTIVE or REVOKED
+    private boolean valid;        // true if status == ACTIVE
     private String verificationToken;
     private String verificationLink;
     private String createdAtUtc;

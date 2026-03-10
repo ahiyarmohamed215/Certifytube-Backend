@@ -286,20 +286,93 @@ GET /api/quiz/<quizId>/result   → same shape as submit
 ### Get Certificate (owner only)
 ```
 GET /api/certificates/<certificateId>
-→ { "certificateId": "...", "certificateNumber": "...", ... }
+→ {
+    "certificateId": "uuid",
+    "certificateNumber": "CT-1741234567890-1",
+    "sessionId": "uuid",
+    "userId": 1,
+    "scorePercent": 80.0,
+    "learnerName": "john",
+    "videoTitle": "Spring Boot Tutorial",
+    "videoId": "abc123",
+    "videoUrl": "https://www.youtube.com/watch?v=abc123",
+    "videoDuration": "12m 30s",
+    "engagementScore": 0.92,
+    "quizScore": 0.85,
+    "engagementThreshold": 0.85,
+    "quizThreshold": 0.80,
+    "platformName": "CertifyTube",
+    "platformAttribution": "Verification Layer 1 & 2",
+    "status": "ACTIVE",
+    "valid": true,
+    "verificationToken": "abc123def456...",
+    "verificationLink": "http://localhost:8080/api/certificates/verify/abc123def456...",
+    "createdAtUtc": "2026-03-10T18:30:00Z"
+  }
 ```
+
+**New fields explained:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | String | `"ACTIVE"` or `"REVOKED"` |
+| `valid` | boolean | `true` if status is ACTIVE, `false` if REVOKED |
+| `videoDuration` | String | Human-readable format: `"12m 30s"`, `"1h 05m 30s"`, or `"N/A"` |
+| `engagementThreshold` | Double | Threshold at time of issuance (e.g. `0.85`) |
+| `quizThreshold` | Double | Threshold at time of issuance (e.g. `0.80`) |
 
 ### Download PDF
 ```
 GET /api/certificates/<certificateId>/pdf
 → application/pdf binary
 ```
+Open in new tab or trigger download:
+```js
+const res = await fetch(`/api/certificates/${certId}/pdf`, { headers: { Authorization: `Bearer ${token}` } });
+const blob = await res.blob();
+window.open(URL.createObjectURL(blob));
+```
 
-### Public Verify (anyone)
+### Public Verify (anyone — NO auth required)
 ```
 GET /api/certificates/verify/<verificationToken>
-→ { "certificateId": "...", "certificateNumber": "...", ... }
+→ Same shape as above, but userId is null (privacy)
 ```
+
+**Frontend verification page (`/verify/:token`):**
+
+The verification page is public and should display:
+
+| Field | Display |
+|-------|---------|
+| `valid` | Show **✅ Valid Certificate** or **❌ Revoked Certificate** banner |
+| `status` | Badge: green "ACTIVE" or red "REVOKED" |
+| `learnerName` | Learner's name |
+| `videoTitle` | Course / video title |
+| `videoDuration` | Duration of the video watched |
+| `engagementScore` | Show as percentage (× 100): e.g. `92%` |
+| `quizScore` | Show as percentage (× 100): e.g. `85%` |
+| `engagementThreshold` | Show as percentage: e.g. `Required: 85%` |
+| `quizThreshold` | Show as percentage: e.g. `Required: 80%` |
+| `certificateNumber` | Certificate number |
+| `createdAtUtc` | Issue date (format nicely) |
+| `platformName` | "CertifyTube" |
+| `videoUrl` | Link to the YouTube video |
+
+**Invalid certificate (token not found):**
+- Backend returns `400` with `{ "message": "Invalid certificate link" }`
+- Show a clear **"Certificate Not Found"** error page
+
+**Revoked certificate (token found but revoked):**
+- Backend returns `200` with `valid: false, status: "REVOKED"`
+- Show the certificate data but with a prominent **"This certificate has been revoked"** warning
+
+### Certificate UI (owner's view)
+
+The certificate detail page should display:
+- All fields from the response above
+- **Download PDF** button → `GET /api/certificates/{id}/pdf`
+- **Share** button → copy `verificationLink` to clipboard
+- **QR Code** → generate from `verificationLink` using a JS QR library (e.g. `qrcode.react`)
 
 ---
 
@@ -318,8 +391,19 @@ All endpoints require `ROLE_ADMIN`. Any non-admin user gets `403`.
 | DELETE | `/api/admin/sessions/{id}` | Delete session |
 | GET | `/api/admin/certificates` | List certificates |
 | DELETE | `/api/admin/certificates/{id}` | Delete certificate |
+| **POST** | **`/api/admin/certificates/{id}/revoke`** | **Revoke certificate** |
 | GET | `/api/admin/quizzes` | List quizzes |
 | DELETE | `/api/admin/quizzes/{id}` | Delete quiz |
+
+### Revoke Certificate (NEW)
+```
+POST /api/admin/certificates/<certificateId>/revoke
+→ { "message": "Certificate revoked successfully", "certificateId": "...", "status": "REVOKED" }
+```
+- Sets certificate status to `REVOKED`
+- The certificate still exists but `valid` becomes `false` on verification
+- If already revoked, returns `400` with `"Certificate is already revoked"`
+- **Frontend:** Add a "Revoke" button in the admin certificates table with a confirmation dialog
 
 ---
 

@@ -60,4 +60,20 @@ public class Certificate {
 
     @Column(name = "created_at_utc", nullable = false)
     private Instant createdAtUtc;
+
+    /** ACTIVE or REVOKED */
+    @Column(name = "status", length = 16, nullable = false)
+    @Builder.Default
+    private String status = "ACTIVE";
+
+    @Column(name = "video_duration_sec")
+    private Double videoDurationSec;
+
+    /** Snapshot of the engagement threshold at certificate issuance */
+    @Column(name = "engagement_threshold", nullable = false)
+    private Double engagementThreshold;
+
+    /** Snapshot of the quiz pass threshold at certificate issuance */
+    @Column(name = "quiz_threshold", nullable = false)
+    private Double quizThreshold;
 }

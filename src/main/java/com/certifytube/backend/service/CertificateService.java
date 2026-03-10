@@ -18,6 +18,7 @@ import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +29,7 @@ import com.google.zxing.qrcode.QRCodeWriter;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 
 import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -46,6 +48,14 @@ public class CertificateService {
 
     @Value("${app.public-base-url:http://localhost:8080}")
     private String publicBaseUrl;
+
+    @Value("${quiz.min-engagement-score:0.85}")
+    private double engagementThresholdConfig;
+
+    @Value("${quiz.pass-score:80}")
+    private double quizThresholdConfig;
+
+    /* ─────────────────── Issue ─────────────────── */
 
     @Transactional
     public Certificate issueIfAbsent(Long userId, String sessionId, QuizAttempt attempt) {
@@ -75,8 +85,12 @@ public class CertificateService {
                             .learnerName(learnerName)
                             .videoTitle(session.getVideoTitle())
                             .videoId(session.getVideoId())
+                            .videoDurationSec(session.getVideoDurationSec())
+                            .engagementThreshold(engagementThresholdConfig)
+                            .quizThreshold(quizThresholdConfig / 100.0)  // store as 0-1
+                            .status("ACTIVE")
                             .createdAtUtc(Instant.now())
-                            // PDF generation requires the entity with data, we will generate it, then update
+                            // PDF generated after first save so entity has an ID
                             .pdfBytes(new byte[0]) 
                             .build());
                     
@@ -88,6 +102,8 @@ public class CertificateService {
                     return cert;
                 });
     }
+
+    /* ─────────────────── Read ─────────────────── */
 
     @Transactional(readOnly = true)
     public CertificateResponse getOwnedCertificate(Long userId, String certificateId) {
@@ -109,6 +125,8 @@ public class CertificateService {
         return cert.getPdfBytes();
     }
 
+    /* ─────────────────── Verify (public) ─────────────────── */
+
     @Transactional(readOnly = true)
     public CertificateResponse verify(String verificationToken) {
         Certificate cert = certificateRepository.findByVerificationToken(verificationToken)
@@ -116,8 +134,27 @@ public class CertificateService {
         return toResponse(cert, true);
     }
 
+    /* ─────────────────── Admin Revoke ─────────────────── */
+
+    @Transactional
+    public void revoke(String certificateId) {
+        Certificate cert = certificateRepository.findById(certificateId)
+                .orElseThrow(() -> new IllegalArgumentException("Certificate not found"));
+        if ("REVOKED".equals(cert.getStatus())) {
+            throw new IllegalStateException("Certificate is already revoked");
+        }
+        cert.setStatus("REVOKED");
+        certificateRepository.save(cert);
+        log.info("Admin revoked Certificate={}", certificateId);
+    }
+
+    /* ─────────────────── DTO mapping ─────────────────── */
+
     private CertificateResponse toResponse(Certificate cert, boolean isPublic) {
         String link = publicBaseUrl + "/api/certificates/verify/" + cert.getVerificationToken();
+        String status = cert.getStatus() != null ? cert.getStatus() : "ACTIVE";
+        boolean valid = "ACTIVE".equals(status);
+
         return CertificateResponse.builder()
                 .certificateId(cert.getCertificateId())
                 .certificateNumber(cert.getCertificateNumber())
@@ -128,17 +165,35 @@ public class CertificateService {
                 .videoTitle(cert.getVideoTitle())
                 .videoId(cert.getVideoId())
                 .videoUrl("https://www.youtube.com/watch?v=" + cert.getVideoId())
+                .videoDuration(formatDuration(cert.getVideoDurationSec()))
                 .engagementScore(cert.getFinalEngagementScore())
                 .quizScore(cert.getFinalQuizScore())
-                .engagementThreshold(0.85)
-                .quizThreshold(0.80)
+                .engagementThreshold(cert.getEngagementThreshold())
+                .quizThreshold(cert.getQuizThreshold())
                 .platformName("CertifyTube")
                 .platformAttribution("Verification Layer 1 & 2")
+                .status(status)
+                .valid(valid)
                 .verificationToken(cert.getVerificationToken())
                 .verificationLink(link)
                 .createdAtUtc(cert.getCreatedAtUtc().toString())
                 .build();
     }
+
+    /* ─────────────────── Helpers ─────────────────── */
+
+    private String formatDuration(Double seconds) {
+        if (seconds == null || seconds <= 0) return "N/A";
+        long totalSec = Math.round(seconds);
+        long h = totalSec / 3600;
+        long m = (totalSec % 3600) / 60;
+        long s = totalSec % 60;
+        if (h > 0) return String.format("%dh %02dm %02ds", h, m, s);
+        if (m > 0) return String.format("%dm %02ds", m, s);
+        return String.format("%ds", s);
+    }
+
+    /* ═══════════════════ PDF Generation ═══════════════════ */
 
     private byte[] generatePdf(Certificate cert) {
         try (PDDocument doc = new PDDocument()) {
@@ -150,166 +205,223 @@ public class CertificateService {
                 float pageWidth = page.getMediaBox().getWidth();
                 float pageHeight = page.getMediaBox().getHeight();
 
-                // 1. Background / Borders
-                cs.setStrokingColor(80 / 255f, 80 / 255f, 80 / 255f); // Dark Grey Outer
+                // Fonts
+                PDType1Font fontBold   = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
+                PDType1Font fontNormal = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+                PDType1Font fontItalic = new PDType1Font(Standard14Fonts.FontName.HELVETICA_OBLIQUE);
+
+                // ──── 1. Background / Borders ────
+                cs.setStrokingColor(80 / 255f, 80 / 255f, 80 / 255f);
                 cs.setLineWidth(40);
                 cs.addRect(20, 20, pageWidth - 40, pageHeight - 40);
                 cs.stroke();
 
-                // Inner light subtle border
                 cs.setStrokingColor(230 / 255f, 230 / 255f, 230 / 255f);
                 cs.setLineWidth(2);
                 cs.addRect(45, 45, pageWidth - 90, pageHeight - 90);
                 cs.stroke();
 
-                // 2. Header
+                // ──── 2. Header ────
                 cs.beginText();
-                cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD), 32);
+                cs.setFont(fontBold, 32);
                 cs.setNonStrokingColor(40 / 255f, 40 / 255f, 40 / 255f);
                 cs.newLineAtOffset(80, pageHeight - 120);
                 cs.showText("Certificate of Completion");
                 cs.endText();
 
-                // 3. Proudly presented to
+                // ──── 3. Proudly presented to ────
                 cs.beginText();
-                cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 14);
+                cs.setFont(fontNormal, 14);
                 cs.setNonStrokingColor(120 / 255f, 130 / 255f, 140 / 255f);
                 cs.newLineAtOffset(80, pageHeight - 170);
                 cs.showText("Proudly presented to");
                 cs.endText();
 
-                // 4. Learner Name
+                // ──── 4. Learner Name ────
                 cs.beginText();
-                cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD), 48);
+                cs.setFont(fontBold, 48);
                 cs.setNonStrokingColor(30 / 255f, 30 / 255f, 30 / 255f);
                 cs.newLineAtOffset(80, pageHeight - 230);
-                String name = cert.getLearnerName() != null ? cert.getLearnerName() : "Learner Name";
+                String name = cert.getLearnerName() != null ? cert.getLearnerName() : "Learner";
                 cs.showText(name);
                 cs.endText();
 
-                // 5. Success text
+                // ──── 5. Course / Video Title ────
                 cs.beginText();
-                cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 14);
+                cs.setFont(fontNormal, 14);
                 cs.setNonStrokingColor(60 / 255f, 60 / 255f, 60 / 255f);
-                cs.newLineAtOffset(80, pageHeight - 290);
+                cs.newLineAtOffset(80, pageHeight - 280);
                 cs.showText("Has successfully completed the assessment for:");
-                cs.newLineAtOffset(0, -20);
-                cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD), 14);
-                
-                String videoTitle = cert.getVideoTitle();
-                if (videoTitle.length() > 60) {
-                    videoTitle = videoTitle.substring(0, 57) + "...";
-                }
-                cs.showText("'" + videoTitle + "'");
-                cs.newLineAtOffset(0, -20);
-                cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 14);
-                cs.showText("Demonstrating comprehensive understanding and skill proficiency.");
                 cs.endText();
 
-                // 6. Meta info pill
-                cs.setNonStrokingColor(255 / 255f, 243 / 255f, 219 / 255f); // light yellow tint
-                cs.addRect(80, pageHeight - 400, 400, 35);
+                cs.beginText();
+                cs.setFont(fontBold, 14);
+                cs.setNonStrokingColor(41 / 255f, 128 / 255f, 185 / 255f);
+                cs.newLineAtOffset(80, pageHeight - 300);
+                String videoTitle = cert.getVideoTitle();
+                if (videoTitle.length() > 55) videoTitle = videoTitle.substring(0, 52) + "...";
+                cs.showText(videoTitle);
+                cs.endText();
+
+                // ──── 6. Video Details (Duration + YouTube Link) ────
+                cs.beginText();
+                cs.setFont(fontNormal, 10);
+                cs.setNonStrokingColor(100 / 255f, 100 / 255f, 100 / 255f);
+                cs.newLineAtOffset(80, pageHeight - 320);
+                String duration = formatDuration(cert.getVideoDurationSec());
+                cs.showText("Duration: " + duration + "   |   https://youtube.com/watch?v=" + cert.getVideoId());
+                cs.endText();
+
+                // ──── 7. Meta Info Pill (Certificate ID + Date) ────
+                cs.setNonStrokingColor(245 / 255f, 248 / 255f, 255 / 255f);
+                cs.addRect(80, pageHeight - 370, 450, 30);
                 cs.fill();
 
                 cs.beginText();
-                cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD), 12);
+                cs.setFont(fontBold, 10);
                 cs.setNonStrokingColor(80 / 255f, 80 / 255f, 80 / 255f);
-                cs.newLineAtOffset(90, pageHeight - 388);
-                cs.showText("Certificate ID: " + cert.getCertificateId().substring(0, 8));
-                
+                cs.newLineAtOffset(90, pageHeight - 360);
+                cs.showText("Certificate ID: " + cert.getCertificateId().substring(0, 8).toUpperCase());
                 DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MMM dd, yyyy").withZone(ZoneId.of("UTC"));
                 String dateStr = formatter.format(cert.getCreatedAtUtc());
-                cs.newLineAtOffset(200, 0);
-                cs.showText("Certified on: " + dateStr);
+                cs.newLineAtOffset(220, 0);
+                cs.showText("Issued: " + dateStr);
                 cs.endText();
 
-                // 7. Scores Block
-                cs.setNonStrokingColor(80 / 255f, 80 / 255f, 80 / 255f);
-                cs.addRect(80, pageHeight - 470, 100, 25);
-                cs.addRect(80, pageHeight - 505, 100, 25);
-                cs.fill();
+                // ──── 8. Scores & Thresholds Block ────
+                float scoresY = pageHeight - 420;
 
+                // Engagement score pill
+                cs.setNonStrokingColor(39 / 255f, 174 / 255f, 96 / 255f);  // green
+                cs.addRect(80, scoresY, 130, 28);
+                cs.fill();
                 cs.beginText();
-                cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 12);
-                cs.setNonStrokingColor(255 / 255f, 255 / 255f, 255 / 255f);
-                cs.newLineAtOffset(90, pageHeight - 462);
+                cs.setFont(fontBold, 11);
+                cs.setNonStrokingColor(1f, 1f, 1f);
+                cs.newLineAtOffset(88, scoresY + 9);
+                double engScore = cert.getFinalEngagementScore() != null ? cert.getFinalEngagementScore() * 100.0 : 0.0;
+                cs.showText("Engagement: " + String.format("%.0f", engScore) + "%");
+                cs.endText();
+
+                // Quiz score pill
+                cs.setNonStrokingColor(41 / 255f, 128 / 255f, 185 / 255f);  // blue
+                cs.addRect(220, scoresY, 115, 28);
+                cs.fill();
+                cs.beginText();
+                cs.setFont(fontBold, 11);
+                cs.setNonStrokingColor(1f, 1f, 1f);
+                cs.newLineAtOffset(228, scoresY + 9);
                 double quizScore = cert.getFinalQuizScore() != null ? cert.getFinalQuizScore() * 100.0 : 0.0;
                 cs.showText("Quiz: " + String.format("%.0f", quizScore) + "%");
-                
-                cs.newLineAtOffset(0, -35);
-                double engScore = cert.getFinalEngagementScore() != null ? cert.getFinalEngagementScore() * 100.0 : 0.0;
-                cs.showText("Eng : " + String.format("%.0f", engScore) + "%");
                 cs.endText();
 
-                // Signature placeholder box
-                cs.setNonStrokingColor(255 / 255f, 243 / 255f, 219 / 255f); // matching yellow
-                cs.addRect(210, pageHeight - 505, 300, 60);
-                cs.fill();
-                
+                // Thresholds text
+                cs.beginText();
+                cs.setFont(fontItalic, 9);
+                cs.setNonStrokingColor(130 / 255f, 130 / 255f, 130 / 255f);
+                cs.newLineAtOffset(80, scoresY - 18);
+                double engThreshold = cert.getEngagementThreshold() != null ? cert.getEngagementThreshold() * 100.0 : 85.0;
+                double qThreshold  = cert.getQuizThreshold() != null ? cert.getQuizThreshold() * 100.0 : 80.0;
+                cs.showText("Pass thresholds — Engagement: " + String.format("%.0f", engThreshold)
+                        + "%  |  Quiz: " + String.format("%.0f", qThreshold) + "%");
+                cs.endText();
+
+                // ──── 9. Seal Image (replaces old signature placeholder) ────
+                try {
+                    ClassPathResource sealResource = new ClassPathResource("seal/certifytube_seal.png");
+                    byte[] sealBytes;
+                    try (InputStream is = sealResource.getInputStream()) {
+                        sealBytes = is.readAllBytes();
+                    }
+                    PDImageXObject sealImage = PDImageXObject.createFromByteArray(doc, sealBytes, "seal");
+                    // Place seal in the center-right area
+                    float sealSize = 120;
+                    float sealX = 380;
+                    float sealY = scoresY - 120;
+                    cs.drawImage(sealImage, sealX, sealY, sealSize, sealSize);
+
+                    // Label under seal
+                    cs.beginText();
+                    cs.setFont(fontNormal, 8);
+                    cs.setNonStrokingColor(120 / 255f, 120 / 255f, 120 / 255f);
+                    cs.newLineAtOffset(sealX + 15, sealY - 12);
+                    cs.showText("CertifyTube Official Seal");
+                    cs.endText();
+                } catch (Exception e) {
+                    log.warn("Could not load seal image, skipping: {}", e.getMessage());
+                }
+
+                // ──── 10. Verification signature lines (left of seal) ────
+                float sigY = scoresY - 80;
                 cs.setStrokingColor(180 / 255f, 180 / 255f, 180 / 255f);
                 cs.setLineWidth(1);
-                cs.moveTo(230, pageHeight - 472);
-                cs.lineTo(330, pageHeight - 472);
+                cs.moveTo(80, sigY);
+                cs.lineTo(200, sigY);
                 cs.stroke();
-                
-                cs.moveTo(380, pageHeight - 472);
-                cs.lineTo(480, pageHeight - 472);
+
+                cs.moveTo(220, sigY);
+                cs.lineTo(340, sigY);
                 cs.stroke();
 
                 cs.beginText();
-                cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 10);
+                cs.setFont(fontNormal, 9);
                 cs.setNonStrokingColor(100 / 255f, 100 / 255f, 100 / 255f);
-                cs.newLineAtOffset(230, pageHeight - 485);
+                cs.newLineAtOffset(80, sigY - 14);
                 cs.showText("AI Assessment Engine");
-                cs.newLineAtOffset(0, -12);
+                cs.newLineAtOffset(0, -11);
                 cs.showText("Verification Layer 2");
-                
-                cs.newLineAtOffset(150, 12);
+                cs.newLineAtOffset(140, 11);
                 cs.showText("Dual-Verification ML");
-                cs.newLineAtOffset(0, -12);
+                cs.newLineAtOffset(0, -11);
                 cs.showText("Verification Layer 1");
                 cs.endText();
 
-                // 8. Footer note
+                // ──── 11. Footer ────
                 cs.beginText();
-                cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 10);
+                cs.setFont(fontNormal, 9);
                 cs.setNonStrokingColor(60 / 255f, 60 / 255f, 60 / 255f);
                 cs.newLineAtOffset(80, 55);
-                cs.showText("* This certificate mathematically verifies engagement and comprehension requirements for the subject.");
+                cs.showText("* This certificate verifies engagement and comprehension requirements via dual-layer ML assessment.");
                 cs.endText();
 
-                // 9. QR Code
-                String verifyUrl = publicBaseUrl + "/verify/" + cert.getVerificationToken(); 
-                // Alternatively point to /api/certificates/verify or frontend
+                // ──── 12. QR Code ────
+                String verifyUrl = publicBaseUrl + "/api/certificates/verify/" + cert.getVerificationToken();
                 try {
                     QRCodeWriter qrCodeWriter = new QRCodeWriter();
-                    // Generate matrix
                     var bitMatrix = qrCodeWriter.encode(verifyUrl, BarcodeFormat.QR_CODE, 120, 120);
                     ByteArrayOutputStream png = new ByteArrayOutputStream();
                     MatrixToImageWriter.writeToStream(bitMatrix, "PNG", png);
-                    
+
                     PDImageXObject qrImage = PDImageXObject.createFromByteArray(doc, png.toByteArray(), "qr");
-                    cs.drawImage(qrImage, pageWidth - 200, 70, 120, 120);
+                    cs.drawImage(qrImage, pageWidth - 200, 55, 120, 120);
+
+                    // "Scan to verify" label
+                    cs.beginText();
+                    cs.setFont(fontNormal, 8);
+                    cs.setNonStrokingColor(120 / 255f, 120 / 255f, 120 / 255f);
+                    cs.newLineAtOffset(pageWidth - 195, 46);
+                    cs.showText("Scan to verify certificate");
+                    cs.endText();
                 } catch (Exception e) {
                     log.error("Failed to generate QR code", e);
                 }
 
-                // 10. Platform / Logo placeholder text on top right
+                // ──── 13. Platform branding (top right) ────
                 cs.beginText();
-                cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD), 24);
+                cs.setFont(fontBold, 24);
                 cs.setNonStrokingColor(41 / 255f, 128 / 255f, 185 / 255f);
                 cs.newLineAtOffset(pageWidth - 250, pageHeight - 120);
                 cs.showText("CertifyTube");
                 cs.endText();
-                
+
                 cs.beginText();
-                cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 10);
+                cs.setFont(fontNormal, 10);
                 cs.setNonStrokingColor(150 / 255f, 150 / 255f, 150 / 255f);
                 cs.newLineAtOffset(pageWidth - 210, pageHeight - 135);
                 cs.showText("VERIFIED LEARNING");
                 cs.endText();
 
-                // Vertical separator edge line
+                // Vertical accent line
                 cs.setStrokingColor(41 / 255f, 128 / 255f, 185 / 255f);
                 cs.setLineWidth(4);
                 cs.moveTo(pageWidth - 270, pageHeight - 100);
