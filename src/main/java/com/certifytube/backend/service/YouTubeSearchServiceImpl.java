@@ -9,6 +9,7 @@ import com.certifytube.backend.model.YouTubeVideoCache;
 import com.certifytube.backend.repository.YouTubeSearchCacheItemRepository;
 import com.certifytube.backend.repository.YouTubeSearchCacheRepository;
 import com.certifytube.backend.repository.YouTubeVideoCacheRepository;
+import com.certifytube.backend.util.StemCategoryUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -43,9 +44,7 @@ public class YouTubeSearchServiceImpl implements YouTubeSearchService {
     private static final Pattern YT_WATCH_PATTERN = Pattern.compile("[?&]v=([A-Za-z0-9_-]{11})");
     private static final Pattern YT_SHORTS_PATTERN = Pattern.compile("/shorts/([A-Za-z0-9_-]{11})");
 
-    // YouTube Category IDs for STEM content: 26 = How-to & Style, 27 = Education,
-    // 28 = Science & Technology
-    private static final Set<String> STEM_CATEGORIES = Set.of("26", "27", "28");
+    // STEM_CATEGORIES constant removed – StemCategoryUtil handles both category and keyword checks.
 
     private static final Logger log = LoggerFactory.getLogger(YouTubeSearchServiceImpl.class);
 
@@ -82,7 +81,7 @@ public class YouTubeSearchServiceImpl implements YouTubeSearchService {
         // For STEM filtering: try to get more results then filter
         YouTubeSearchResponse response = searchVideos(query, Math.min(requestedLimit * 2, MAX_VIDEOS_PER_QUERY));
         List<YouTubeVideoDto> stemVideos = response.getVideos().stream()
-                .filter(v -> v.getCategoryId() != null && STEM_CATEGORIES.contains(v.getCategoryId()))
+                .filter(v -> StemCategoryUtil.isStemContent(v.getCategoryId(), v.getTitle(), v.getDescription()))
                 .limit(requestedLimit)
                 .toList();
         return YouTubeSearchResponse.builder()

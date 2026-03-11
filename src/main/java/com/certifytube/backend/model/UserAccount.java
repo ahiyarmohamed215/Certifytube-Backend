@@ -32,4 +32,7 @@ public class UserAccount {
 
     @Column(name = "created_at_utc", nullable = false)
     private Instant createdAtUtc;
+
+    @Column(length = 255)
+    private String name;
 }

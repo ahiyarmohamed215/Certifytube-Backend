@@ -12,6 +12,7 @@ public interface UserAccountMapper {
     @Mapping(source = "id", target = "userId")
     @Mapping(target = "token", ignore = true)
     @Mapping(target = "tokenType", ignore = true)
+    @Mapping(target = "message", ignore = true)
     AuthResponse toAuthResponse(UserAccount user);
 
     @Mapping(source = "id", target = "userId")

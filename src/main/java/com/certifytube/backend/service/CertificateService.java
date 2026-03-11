@@ -15,6 +15,7 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.springframework.beans.factory.annotation.Value;
@@ -68,9 +69,7 @@ public class CertificateService {
                     EngagementResult engagement = engagementResultRepository.findTopBySessionIdOrderByCreatedAtUtcDesc(sessionId)
                             .orElseThrow(() -> new IllegalArgumentException("Engagement result not found"));
 
-                    String learnerName = user.getEmail().contains("@") 
-                            ? user.getEmail().substring(0, user.getEmail().indexOf("@")) 
-                            : user.getEmail();
+                    String learnerName = normalizeLearnerName(user.getName());
 
                     Certificate cert = certificateRepository.save(Certificate.builder()
                             .certificateId(UUID.randomUUID().toString())
@@ -193,6 +192,33 @@ public class CertificateService {
         return String.format("%ds", s);
     }
 
+    private String normalizeLearnerName(String name) {
+        if (name == null) {
+            return "Learner";
+        }
+        String trimmed = name.trim();
+        return trimmed.isEmpty() ? "Learner" : trimmed;
+    }
+
+    private String sanitizePdfText(PDFont font, String text) {
+        String value = text == null ? "N/A" : text.replace('\n', ' ').replace('\r', ' ').trim();
+        if (value.isEmpty()) {
+            return "N/A";
+        }
+
+        StringBuilder safe = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char ch = value.charAt(i);
+            try {
+                font.encode(String.valueOf(ch));
+                safe.append(ch);
+            } catch (Exception ignored) {
+                safe.append('?');
+            }
+        }
+        return safe.toString();
+    }
+
     /* ═══════════════════ PDF Generation ═══════════════════ */
 
     private byte[] generatePdf(Certificate cert) {
@@ -243,7 +269,7 @@ public class CertificateService {
                 cs.setNonStrokingColor(30 / 255f, 30 / 255f, 30 / 255f);
                 cs.newLineAtOffset(80, pageHeight - 230);
                 String name = cert.getLearnerName() != null ? cert.getLearnerName() : "Learner";
-                cs.showText(name);
+                cs.showText(sanitizePdfText(fontBold, name));
                 cs.endText();
 
                 // ──── 5. Course / Video Title ────
@@ -258,9 +284,9 @@ public class CertificateService {
                 cs.setFont(fontBold, 14);
                 cs.setNonStrokingColor(41 / 255f, 128 / 255f, 185 / 255f);
                 cs.newLineAtOffset(80, pageHeight - 300);
-                String videoTitle = cert.getVideoTitle();
+                String videoTitle = cert.getVideoTitle() != null ? cert.getVideoTitle().trim() : "Untitled Video";
                 if (videoTitle.length() > 55) videoTitle = videoTitle.substring(0, 52) + "...";
-                cs.showText(videoTitle);
+                cs.showText(sanitizePdfText(fontBold, videoTitle));
                 cs.endText();
 
                 // ──── 6. Video Details (Duration + YouTube Link) ────
@@ -269,7 +295,8 @@ public class CertificateService {
                 cs.setNonStrokingColor(100 / 255f, 100 / 255f, 100 / 255f);
                 cs.newLineAtOffset(80, pageHeight - 320);
                 String duration = formatDuration(cert.getVideoDurationSec());
-                cs.showText("Duration: " + duration + "   |   https://youtube.com/watch?v=" + cert.getVideoId());
+                String videoId = cert.getVideoId() != null ? cert.getVideoId() : "N/A";
+                cs.showText(sanitizePdfText(fontNormal, "Duration: " + duration + "   |   https://youtube.com/watch?v=" + videoId));
                 cs.endText();
 
                 // ──── 7. Meta Info Pill (Certificate ID + Date) ────
@@ -281,7 +308,11 @@ public class CertificateService {
                 cs.setFont(fontBold, 10);
                 cs.setNonStrokingColor(80 / 255f, 80 / 255f, 80 / 255f);
                 cs.newLineAtOffset(90, pageHeight - 360);
-                cs.showText("Certificate ID: " + cert.getCertificateId().substring(0, 8).toUpperCase());
+                String certificateIdShort = cert.getCertificateId() == null ? "N/A" : cert.getCertificateId();
+                if (certificateIdShort.length() > 8) {
+                    certificateIdShort = certificateIdShort.substring(0, 8);
+                }
+                cs.showText("Certificate ID: " + sanitizePdfText(fontBold, certificateIdShort.toUpperCase()));
                 DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MMM dd, yyyy").withZone(ZoneId.of("UTC"));
                 String dateStr = formatter.format(cert.getCreatedAtUtc());
                 cs.newLineAtOffset(220, 0);
@@ -322,7 +353,7 @@ public class CertificateService {
                 cs.newLineAtOffset(80, scoresY - 18);
                 double engThreshold = cert.getEngagementThreshold() != null ? cert.getEngagementThreshold() * 100.0 : 85.0;
                 double qThreshold  = cert.getQuizThreshold() != null ? cert.getQuizThreshold() * 100.0 : 80.0;
-                cs.showText("Pass thresholds — Engagement: " + String.format("%.0f", engThreshold)
+                cs.showText("Pass thresholds - Engagement: " + String.format("%.0f", engThreshold)
                         + "%  |  Quiz: " + String.format("%.0f", qThreshold) + "%");
                 cs.endText();
 

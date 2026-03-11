@@ -31,12 +31,17 @@ public class AuthService {
     @Transactional
     public AuthResponse signUp(SignUpRequest req) {
         String email = req.getEmail().trim().toLowerCase();
+        String name = req.getName().trim();
+        if (name.length() < 2 || name.length() > 255) {
+            throw new IllegalArgumentException("Name must be between 2 and 255 characters");
+        }
         if (userAccountRepository.existsByEmail(email)) {
             throw new IllegalArgumentException("Email already registered");
         }
 
         UserAccount user = userAccountRepository.save(UserAccount.builder()
                 .email(email)
+                .name(name)
                 .passwordHash(passwordEncoder.encode(req.getPassword()))
                 .role(Role.LEARNER)
                 .createdAtUtc(Instant.now())
@@ -46,6 +51,7 @@ public class AuthService {
         AuthResponse response = userAccountMapper.toAuthResponse(user);
         response.setToken(token);
         response.setTokenType("Bearer");
+        response.setMessage("Signup successful! Your name (" + user.getName() + ") will be used in your certificate.");
         return response;
     }
 
