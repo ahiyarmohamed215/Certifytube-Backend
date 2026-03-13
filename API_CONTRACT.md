@@ -12,15 +12,70 @@ Request:
 ```
 Response:
 ```json
-{"userId":1,"email":"user@test.com","role":"USER","token":"...","tokenType":"Bearer"}
+{"userId":1,"email":"user@test.com","role":"LEARNER","emailVerified":false,"message":"Signup successful. Please verify your email to continue."}
 ```
+Notes:
+- Signup does not issue JWT until email is verified.
 
 2. `POST /api/auth/login`  
 Request:
 ```json
 {"email":"user@test.com","password":"Password@123"}
 ```
-Response: same as signup.
+Response:
+```json
+{"userId":1,"email":"user@test.com","role":"LEARNER","emailVerified":true,"token":"...","tokenType":"Bearer"}
+```
+Notes:
+- Login is blocked until email is verified.
+
+2a. `POST /api/auth/forgot-password`  
+Request:
+```json
+{"email":"user@test.com"}
+```
+Response:
+```json
+{"message":"If the email exists, a recovery email has been sent."}
+```
+Notes:
+- Public endpoint.
+- Sends actual email via SMTP when account exists.
+- Rate limited. Exceeding limits returns `429`.
+
+2b. `POST /api/auth/reset-password`  
+Request:
+```json
+{"token":"<reset-token>","newPassword":"NewPassword@123"}
+```
+Response:
+```json
+{"message":"Password reset successful"}
+```
+Notes:
+- Public endpoint.
+- Rate limited. Exceeding limits returns `429`.
+
+2c. `POST /api/auth/resend-verification`  
+Request:
+```json
+{"email":"user@test.com"}
+```
+Response:
+```json
+{"message":"If the email exists and is not verified, a verification email has been sent"}
+```
+Notes:
+- Public endpoint.
+- Rate limited. Exceeding limits returns `429`.
+
+2d. `GET /api/auth/verify-email?token={token}`  
+Response:
+```json
+{"message":"Email verified successfully"}
+```
+Notes:
+- Public endpoint.
 
 3. `GET /api/youtube/search?q=spring boot&limit=20`  
 Response:
@@ -53,7 +108,7 @@ Notes:
 1. `GET /api/auth/me`  
 Response:
 ```json
-{"userId":1,"email":"user@test.com","role":"USER"}
+{"userId":1,"email":"user@test.com","role":"LEARNER","emailVerified":true}
 ```
 
 2. `POST /api/auth/logout` (or `/api/auth/signout`)  
@@ -64,6 +119,15 @@ Response:
 Notes:
 - Protected endpoint (JWT required).
 - Current JWT is revoked server-side by `jti` until token expiry.
+- `POST /api/auth/change-password` changes password for logged-in user.  
+  Request:
+  ```json
+  {"currentPassword":"Password@123","newPassword":"NewPassword@123"}
+  ```
+  Response:
+  ```json
+  {"message":"Password changed successfully"}
+  ```
 - `DELETE /api/auth/me` deletes the authenticated account and owned data.  
   Response:
   ```json

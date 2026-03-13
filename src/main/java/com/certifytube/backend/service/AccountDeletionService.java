@@ -3,7 +3,9 @@ package com.certifytube.backend.service;
 import com.certifytube.backend.model.Quiz;
 import com.certifytube.backend.model.Session;
 import com.certifytube.backend.repository.CertificateRepository;
+import com.certifytube.backend.repository.EmailVerificationTokenRepository;
 import com.certifytube.backend.repository.EngagementResultRepository;
+import com.certifytube.backend.repository.PasswordResetTokenRepository;
 import com.certifytube.backend.repository.QuizAttemptRepository;
 import com.certifytube.backend.repository.QuizQuestionRepository;
 import com.certifytube.backend.repository.QuizRepository;
@@ -32,6 +34,8 @@ public class AccountDeletionService {
     private final SessionEventRepository sessionEventRepository;
     private final SessionFeaturesRepository sessionFeaturesRepository;
     private final EngagementResultRepository engagementResultRepository;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final EmailVerificationTokenRepository emailVerificationTokenRepository;
 
     @Transactional
     public void deleteUserAndOwnedData(Long userId) {
@@ -60,6 +64,8 @@ public class AccountDeletionService {
             sessionRepository.deleteAll(sessions);
         }
 
+        passwordResetTokenRepository.deleteByUserId(userId);
+        emailVerificationTokenRepository.deleteByUserId(userId);
         userAccountRepository.deleteById(userId);
         log.info("Deleted account and owned data for userId={}", userId);
     }

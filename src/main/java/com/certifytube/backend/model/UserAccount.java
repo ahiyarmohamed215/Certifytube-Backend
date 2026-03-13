@@ -35,4 +35,11 @@ public class UserAccount {
 
     @Column(length = 255)
     private String name;
+
+    @Column(name = "email_verified", nullable = false)
+    @Builder.Default
+    private Boolean emailVerified = false;
+
+    @Column(name = "email_verified_at_utc")
+    private Instant emailVerifiedAtUtc;
 }

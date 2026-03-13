@@ -38,7 +38,45 @@ Authorization: Bearer {{token}}
 POST {{host}}/api/auth/logout
 Authorization: Bearer {{token}}
 
-### 4b. Delete my account (DANGER)
+### 4a. Forgot password (public)
+POST {{host}}/api/auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "testuser@example.com"
+}
+
+### 4b. Resend verification email (public)
+POST {{host}}/api/auth/resend-verification
+Content-Type: application/json
+
+{
+  "email": "testuser@example.com"
+}
+
+### 4c. Verify email (public)
+GET {{host}}/api/auth/verify-email?token=EMAIL_VERIFICATION_TOKEN_HERE
+
+### 4d. Reset password (public)
+POST {{host}}/api/auth/reset-password
+Content-Type: application/json
+
+{
+  "token": "RESET_TOKEN_FROM_EMAIL_LINK",
+  "newPassword": "NewPassword@123"
+}
+
+### 4e. Change password (logged in)
+POST {{host}}/api/auth/change-password
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "currentPassword": "Password@123",
+  "newPassword": "NewPassword@123"
+}
+
+### 4f. Delete my account (DANGER)
 DELETE {{host}}/api/auth/me
 Authorization: Bearer {{token}}
 

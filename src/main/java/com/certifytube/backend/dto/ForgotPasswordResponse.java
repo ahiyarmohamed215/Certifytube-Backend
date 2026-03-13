@@ -11,10 +11,6 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class AuthMeResponse {
-    private Long userId;
-    private String email;
-    private String role;
-    private String name;
-    private Boolean emailVerified;
+public class ForgotPasswordResponse {
+    private String message;
 }
