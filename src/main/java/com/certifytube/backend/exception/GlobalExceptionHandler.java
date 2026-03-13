@@ -59,6 +59,11 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage(), req.getRequestURI());
     }
 
+    @ExceptionHandler(TokenValidationException.class)
+    public ResponseEntity<ApiError> handleTokenValidation(TokenValidationException ex, HttpServletRequest req) {
+        return build(HttpStatus.BAD_REQUEST, ex.getCode(), ex.getMessage(), req.getRequestURI());
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> handleGeneric(Exception ex, HttpServletRequest req) {
         return build(HttpStatus.INTERNAL_SERVER_ERROR, ex.getMessage(), req.getRequestURI());
@@ -69,6 +74,18 @@ public class GlobalExceptionHandler {
                 Instant.now(),
                 status.value(),
                 status.getReasonPhrase(),
+                message,
+                path
+        );
+        return ResponseEntity.status(status).body(body);
+    }
+
+    private ResponseEntity<ApiError> build(HttpStatus status, String code, String message, String path) {
+        ApiError body = new ApiError(
+                Instant.now(),
+                status.value(),
+                status.getReasonPhrase(),
+                code,
                 message,
                 path
         );

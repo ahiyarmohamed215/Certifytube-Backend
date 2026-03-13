@@ -65,6 +65,9 @@ GET /api/auth/verify-email?token=<verification-token>
 -> { "message": "Email verified successfully" }
 ```
 
+Production setup note:
+- Backend must use public domains in `APP_FRONTEND_BASE_URL` and `APP_PUBLIC_BASE_URL`; otherwise emails will contain localhost links.
+
 ### Change Password (Logged In)
 ```
 POST /api/auth/change-password

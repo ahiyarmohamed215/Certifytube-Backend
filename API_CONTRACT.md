@@ -77,6 +77,11 @@ Response:
 Notes:
 - Public endpoint.
 
+Email Link Configuration (Production):
+- Set `APP_FRONTEND_BASE_URL` to your live frontend URL (example: `https://app.certifytube.com`).
+- Set `APP_PUBLIC_BASE_URL` to your live backend URL (example: `https://api.certifytube.com`).
+- Configure SMTP with `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, and `APP_MAIL_FROM`.
+
 3. `GET /api/youtube/search?q=spring boot&limit=20`  
 Response:
 ```json

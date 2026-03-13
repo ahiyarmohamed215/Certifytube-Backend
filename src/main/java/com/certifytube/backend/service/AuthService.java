@@ -8,6 +8,7 @@ import com.certifytube.backend.dto.LoginRequest;
 import com.certifytube.backend.dto.ResendVerificationRequest;
 import com.certifytube.backend.dto.ResetPasswordRequest;
 import com.certifytube.backend.dto.SignUpRequest;
+import com.certifytube.backend.exception.TokenValidationException;
 import com.certifytube.backend.model.EmailVerificationToken;
 import com.certifytube.backend.model.PasswordResetToken;
 import com.certifytube.backend.mapper.UserAccountMapper;
@@ -182,29 +183,51 @@ public class AuthService {
     @Transactional
     public void verifyEmail(String tokenRaw) {
         if (tokenRaw == null || tokenRaw.isBlank()) {
-            throw new IllegalArgumentException("Verification token is required");
+            throw new TokenValidationException("TOKEN_MISSING", "Verification token is required");
         }
         Instant now = Instant.now();
         emailVerificationTokenRepository.deleteByExpiresAtUtcBefore(now);
 
         String tokenHash = sha256Hex(tokenRaw.trim());
         EmailVerificationToken token = emailVerificationTokenRepository.findByTokenHash(tokenHash)
-                .orElseThrow(() -> new IllegalArgumentException("Invalid or expired verification token"));
-
-        if (token.getUsedAtUtc() != null || token.getExpiresAtUtc().isBefore(now)) {
-            emailVerificationTokenRepository.delete(token);
-            throw new IllegalArgumentException("Invalid or expired verification token");
-        }
+                .orElseThrow(() -> new TokenValidationException(
+                        "TOKEN_INVALID_OR_EXPIRED",
+                        "Invalid or expired verification token"
+                ));
 
         UserAccount user = userAccountRepository.findById(token.getUserId())
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+                .orElseThrow(() -> new TokenValidationException(
+                        "TOKEN_INVALID_OR_EXPIRED",
+                        "Invalid or expired verification token"
+                ));
+
+        if (token.getExpiresAtUtc().isBefore(now)) {
+            emailVerificationTokenRepository.delete(token);
+            throw new TokenValidationException("TOKEN_INVALID_OR_EXPIRED", "Invalid or expired verification token");
+        }
+
+        if (token.getUsedAtUtc() != null) {
+            if (Boolean.TRUE.equals(user.getEmailVerified())) {
+                return;
+            }
+            throw new TokenValidationException(
+                    "TOKEN_ALREADY_USED",
+                    "Verification token already used. Request a new verification email."
+            );
+        }
+
+        if (Boolean.TRUE.equals(user.getEmailVerified())) {
+            token.setUsedAtUtc(now);
+            emailVerificationTokenRepository.save(token);
+            return;
+        }
+
         user.setEmailVerified(true);
         user.setEmailVerifiedAtUtc(now);
         userAccountRepository.save(user);
 
         token.setUsedAtUtc(now);
         emailVerificationTokenRepository.save(token);
-        emailVerificationTokenRepository.deleteByUserId(user.getId());
     }
 
     @Transactional
