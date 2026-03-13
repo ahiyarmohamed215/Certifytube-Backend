@@ -6,4 +6,5 @@ import java.util.Optional;
 
 public interface EngagementResultRepository extends JpaRepository<EngagementResult, Long> {
     Optional<EngagementResult> findTopBySessionIdOrderByCreatedAtUtcDesc(String sessionId);
+    void deleteBySessionId(String sessionId);
 }

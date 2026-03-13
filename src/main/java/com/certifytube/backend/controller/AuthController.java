@@ -7,6 +7,7 @@ import com.certifytube.backend.dto.SignUpRequest;
 import com.certifytube.backend.dto.AuthMeResponse;
 import com.certifytube.backend.mapper.UserAccountMapper;
 import com.certifytube.backend.model.UserAccount;
+import com.certifytube.backend.service.AccountDeletionService;
 import com.certifytube.backend.service.AuthenticatedUserService;
 import com.certifytube.backend.service.AuthService;
 import jakarta.validation.Valid;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AuthService authService;
+    private final AccountDeletionService accountDeletionService;
     private final AuthenticatedUserService authenticatedUserService;
     private final UserAccountMapper userAccountMapper;
 
@@ -48,5 +50,13 @@ public class AuthController {
     public LogoutResponse signOut(@RequestHeader(value = "Authorization", required = false) String authHeader) {
         authService.logout(authHeader);
         return new LogoutResponse("Signed out");
+    }
+
+    @DeleteMapping("/me")
+    public LogoutResponse deleteMyAccount(@RequestHeader(value = "Authorization", required = false) String authHeader) {
+        UserAccount user = authenticatedUserService.currentUser();
+        authService.logout(authHeader);
+        accountDeletionService.deleteUserAndOwnedData(user.getId());
+        return new LogoutResponse("Account deleted successfully");
     }
 }

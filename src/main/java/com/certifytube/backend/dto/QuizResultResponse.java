@@ -6,6 +6,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.util.List;
+
 @Getter
 @Setter
 @NoArgsConstructor
@@ -19,4 +21,5 @@ public class QuizResultResponse {
     private boolean passed;
     private String certificateId;
     private String verificationLink;
+    private List<QuizQuestionReviewDto> review;
 }

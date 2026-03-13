@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import lombok.extern.slf4j.Slf4j;
+import java.util.Map;
 
 @Slf4j
 @RestController
@@ -26,6 +27,14 @@ public class CertificateController {
         UserAccount user = authenticatedUserService.currentUser();
         log.info("User {} requesting certificate {}", user.getId(), certificateId);
         return certificateService.getOwnedCertificate(user.getId(), certificateId);
+    }
+
+    @DeleteMapping("/{certificateId}")
+    public ResponseEntity<Map<String, String>> deleteMine(@PathVariable String certificateId) {
+        UserAccount user = authenticatedUserService.currentUser();
+        log.info("User {} deleting certificate {}", user.getId(), certificateId);
+        certificateService.deleteOwnedCertificate(user.getId(), certificateId);
+        return ResponseEntity.ok(Map.of("message", "Certificate deleted successfully"));
     }
 
     @GetMapping("/{certificateId}/pdf")

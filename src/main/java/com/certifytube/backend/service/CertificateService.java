@@ -124,6 +124,17 @@ public class CertificateService {
         return cert.getPdfBytes();
     }
 
+    @Transactional
+    public void deleteOwnedCertificate(Long userId, String certificateId) {
+        Certificate cert = certificateRepository.findById(certificateId)
+                .orElseThrow(() -> new IllegalArgumentException("Certificate not found"));
+        if (!cert.getUserId().equals(userId)) {
+            throw new AccessDeniedException("Certificate does not belong to authenticated user");
+        }
+        certificateRepository.delete(cert);
+        log.info("User {} deleted certificate {}", userId, certificateId);
+    }
+
     /* ─────────────────── Verify (public) ─────────────────── */
 
     @Transactional(readOnly = true)

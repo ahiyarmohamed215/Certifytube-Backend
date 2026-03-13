@@ -7,4 +7,5 @@ import java.util.List;
 
 public interface SessionEventRepository extends JpaRepository<SessionEvent, String> {
     List<SessionEvent> findBySessionIdOrderByCreatedAtUtcAsc(String sessionId);
+    void deleteBySessionId(String sessionId);
 }

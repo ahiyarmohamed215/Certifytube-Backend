@@ -8,4 +8,5 @@ import java.util.Optional;
 public interface SessionFeaturesRepository extends JpaRepository<SessionFeatures, Long> {
     Optional<SessionFeatures> findBySessionId(String sessionId);
     Optional<SessionFeatures> findTopBySessionIdOrderByCreatedAtUtcDesc(String sessionId);
+    void deleteBySessionId(String sessionId);
 }

@@ -64,6 +64,12 @@ Response:
 Notes:
 - Protected endpoint (JWT required).
 - Current JWT is revoked server-side by `jti` until token expiry.
+- `DELETE /api/auth/me` deletes the authenticated account and owned data.  
+  Response:
+  ```json
+  {"message":"Account deleted successfully"}
+  ```
+  Frontend should clear local auth state and redirect to login.
 
 3. `GET /api/dashboard` or `GET /api/dashboard?status=ACTIVE` or `GET /api/dashboard?status=COMPLETED,QUIZ_PENDING,CERTIFIED`  
 Response:
@@ -206,6 +212,7 @@ Notes:
 - **Idempotent**: if called again within 60s, returns existing quiz.
 - `numQuestions` and `includeCoding` are optional.
 - **STEM only**: non-STEM videos return error.
+- `generate/get` does not include `correctAnswer` or `explanation`.
 
 9. `GET /api/quiz/{quizId}`  
 Response: same shape as generate response.
@@ -226,12 +233,25 @@ Response:
   "scorePercent":80.0,
   "passed":true,
   "certificateId":"cert-uuid",
-  "verificationLink":"http://localhost:8080/api/certificates/verify/{token}"
+  "verificationLink":"http://localhost:8080/api/certificates/verify/{token}",
+  "review":[
+    {
+      "questionId":"q1",
+      "questionType":"mcq",
+      "questionText":"...",
+      "options":["A","B","C","D"],
+      "selectedAnswer":"A",
+      "correctAnswer":"B",
+      "correct":false,
+      "explanation":"..."
+    }
+  ]
 }
 ```
 Notes:
 - Backend enforces quiz ownership (`quiz.userId == jwt.userId`).
 - `answers` keys can be the exact `questionId` values from generate response; fallback `q1`, `q2`, ... is also accepted.
+- `review` includes per-question answer + explanation after an attempt (pass or fail).
 - Learner can retry after failing. After 2 failed attempts in the same engagement window, learner must rewatch + analyze again before next attempt.
 
 11. `GET /api/quiz/{quizId}/result`  
@@ -248,6 +268,11 @@ Notes:
 Response: PDF bytes (`application/pdf`).
 Notes:
 - Owner-only endpoint (`certificate.userId == jwt.userId`).
+- `DELETE /api/certificates/{certificateId}` deletes the authenticated user's certificate.  
+  Response:
+  ```json
+  {"message":"Certificate deleted successfully"}
+  ```
 
 ## Auth/Navigation Rules for Frontend
 1. Search/list page can be public.

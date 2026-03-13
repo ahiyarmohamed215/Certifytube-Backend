@@ -8,4 +8,5 @@ import java.util.Optional;
 public interface CertificateRepository extends JpaRepository<Certificate, String> {
     Optional<Certificate> findByVerificationToken(String verificationToken);
     Optional<Certificate> findTopByUserIdAndSessionIdOrderByCreatedAtUtcDesc(Long userId, String sessionId);
+    void deleteByUserId(Long userId);
 }

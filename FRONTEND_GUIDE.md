@@ -33,11 +33,19 @@ POST /api/auth/logout
 → { "message": "Logged out" }
 ```
 
+### Delete Account (Profile)
+```
+DELETE /api/auth/me
+â†’ { "message": "Account deleted successfully" }
+```
+This removes the authenticated learner account and owned data (sessions, engagement, quizzes, certificates).
+
 **Frontend rules:**
 - Store token in `localStorage` or equivalent
 - Add `Authorization: Bearer <token>` to all protected requests
 - On any `401`, clear token and redirect to login
 - Call `/api/auth/me` on app boot to restore session
+- After successful account delete, clear token and redirect to login/landing page
 
 ---
 
@@ -255,6 +263,7 @@ Body: { "sessionId": "uuid", "difficulty": "medium" }
 - Backend auto-fetches transcript from YouTube (via ML server) — no need to send transcript
 - **Idempotency:** if called again within 60 seconds, returns the existing quiz
 - **Disable the Generate button** after click to prevent duplicate calls
+- `generate/get` does not include `correctAnswer` or `explanation`.
 
 ### Submit Quiz
 ```
@@ -267,10 +276,23 @@ Body: { "answers": { "q1": "A", "q2": "true", "q3": "fill_value" } }
     "scorePercent": 80.0,
     "passed": true,
     "certificateId": "cert-uuid",
-    "verificationLink": "http://localhost:8080/api/certificates/verify/<token>"
+    "verificationLink": "http://localhost:8080/api/certificates/verify/<token>",
+    "review": [
+      {
+        "questionId": "q1",
+        "questionType": "mcq",
+        "questionText": "...",
+        "options": ["A","B","C","D"],
+        "selectedAnswer": "A",
+        "correctAnswer": "B",
+        "correct": false,
+        "explanation": "..."
+      }
+    ]
   }
 ```
 `answers` keys should use `questionId` from quiz response; fallback `q1`, `q2`, ... is accepted.
+Use `review[]` to show each question's correct answer + explanation after submit (pass or fail).
 After 2 failed attempts in the current engagement window, learner must rewatch + analyze again.
 
 ### Get Quiz / Result
@@ -331,6 +353,13 @@ const res = await fetch(`/api/certificates/${certId}/pdf`, { headers: { Authoriz
 const blob = await res.blob();
 window.open(URL.createObjectURL(blob));
 ```
+
+### Delete Certificate (owner only)
+```
+DELETE /api/certificates/<certificateId>
+→ { "message": "Certificate deleted successfully" }
+```
+Use a confirmation dialog before delete. On success, remove certificate from UI and navigate away from certificate detail page if open.
 
 ### Public Verify (anyone — NO auth required)
 ```

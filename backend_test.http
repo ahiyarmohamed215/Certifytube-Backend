@@ -38,6 +38,10 @@ Authorization: Bearer {{token}}
 POST {{host}}/api/auth/logout
 Authorization: Bearer {{token}}
 
+### 4b. Delete my account (DANGER)
+DELETE {{host}}/api/auth/me
+Authorization: Bearer {{token}}
+
 ### ═════════════════════════════════════════════════
 ### YOUTUBE SEARCH
 ### ═════════════════════════════════════════════════
@@ -189,6 +193,10 @@ Authorization: Bearer {{token}}
 
 ### 17. Public verify certificate
 GET {{host}}/api/certificates/verify/VERIFICATION_TOKEN_HERE
+
+### 17b. Delete certificate (owner only)
+DELETE {{host}}/api/certificates/CERTIFICATE_ID_HERE
+Authorization: Bearer {{token}}
 
 ### ═════════════════════════════════════════════════
 ### ADMIN (requires ADMIN role)

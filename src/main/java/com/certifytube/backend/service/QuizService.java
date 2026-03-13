@@ -296,16 +296,10 @@ public class QuizService {
         }
 
         List<QuizQuestion> questions = quizQuestionRepository.findByQuizOrderByPositionIndexAsc(quiz);
-        int total = questions.size();
-        int correct = 0;
         Map<String, String> providedAnswers = req.getAnswers() == null ? Map.of() : req.getAnswers();
-
-        for (QuizQuestion q : questions) {
-            String provided = resolveProvidedAnswer(providedAnswers, q);
-            if (isCorrectAnswer(q, provided)) {
-                correct++;
-            }
-        }
+        List<QuizQuestionReviewDto> review = buildQuestionReview(questions, providedAnswers);
+        int total = review.size();
+        int correct = (int) review.stream().filter(QuizQuestionReviewDto::isCorrect).count();
 
         double score = total == 0 ? 0.0 : (correct * 100.0) / total;
         boolean passed = score >= passScore;
@@ -313,7 +307,7 @@ public class QuizService {
         QuizAttempt attempt = quizAttemptRepository.save(QuizAttempt.builder()
                 .quiz(quiz)
                 .userId(user.getId())
-                .answersJson(writeJson(req.getAnswers()))
+                .answersJson(writeJson(providedAnswers))
                 .correctCount(correct)
                 .totalCount(total)
                 .scorePercent(score)
@@ -345,6 +339,7 @@ public class QuizService {
                 .passed(passed)
                 .certificateId(certId)
                 .verificationLink(verifyLink)
+                .review(review)
                 .build();
     }
 
@@ -368,6 +363,9 @@ public class QuizService {
 
         QuizAttempt attempt = quizAttemptRepository.findTopByQuizAndUserIdOrderByCreatedAtUtcDesc(quiz, user.getId())
                 .orElseThrow(() -> new IllegalArgumentException("Quiz not submitted"));
+        List<QuizQuestion> questions = quizQuestionRepository.findByQuizOrderByPositionIndexAsc(quiz);
+        Map<String, String> providedAnswers = readAnswers(attempt.getAnswersJson());
+        List<QuizQuestionReviewDto> review = buildQuestionReview(questions, providedAnswers);
 
         Certificate cert = null;
         if (attempt.getPassedFlag()) {
@@ -383,6 +381,7 @@ public class QuizService {
                 .certificateId(cert == null ? null : cert.getCertificateId())
                 .verificationLink(cert == null ? null
                         : (publicBaseUrl + "/api/certificates/verify/" + cert.getVerificationToken()))
+                .review(review)
                 .build();
     }
 
@@ -443,11 +442,69 @@ public class QuizService {
         return s.trim().toLowerCase().replaceAll("\\s+", " ");
     }
 
-    private boolean isCorrectAnswer(QuizQuestion question, String providedAnswerRaw) {
-        List<String> options = readOptions(question.getOptionsJson());
+    private boolean isCorrectAnswer(QuizQuestion question, String providedAnswerRaw, List<String> options) {
         String expected = canonicalizeAnswer(question.getCorrectAnswer(), options);
         String provided = canonicalizeAnswer(providedAnswerRaw, options);
         return !expected.isBlank() && expected.equals(provided);
+    }
+
+    private List<QuizQuestionReviewDto> buildQuestionReview(List<QuizQuestion> questions, Map<String, String> providedAnswers) {
+        if (questions == null || questions.isEmpty()) {
+            return List.of();
+        }
+
+        Map<String, String> safeAnswers = providedAnswers == null ? Map.of() : providedAnswers;
+        List<QuizQuestionReviewDto> review = new ArrayList<>(questions.size());
+        for (QuizQuestion q : questions) {
+            List<String> options = readOptions(q.getOptionsJson());
+            String providedRaw = resolveProvidedAnswer(safeAnswers, q);
+            boolean correct = isCorrectAnswer(q, providedRaw, options);
+
+            review.add(QuizQuestionReviewDto.builder()
+                    .questionId(q.getQuestionUid())
+                    .questionType(q.getQuestionType())
+                    .questionText(q.getQuestionText())
+                    .options(options)
+                    .selectedAnswer(toDisplayAnswer(providedRaw, options))
+                    .correctAnswer(toDisplayAnswer(q.getCorrectAnswer(), options))
+                    .correct(correct)
+                    .explanation(blankToNull(q.getExplanationText()))
+                    .build());
+        }
+        return review;
+    }
+
+    private String toDisplayAnswer(String answerRaw, List<String> options) {
+        if (answerRaw == null) {
+            return null;
+        }
+
+        String trimmed = answerRaw.trim();
+        if (trimmed.isBlank()) {
+            return null;
+        }
+
+        String normalized = normalizeAnswer(trimmed);
+        if (!options.isEmpty()) {
+            int optionIndex = resolveOptionIndex(normalized, options);
+            if (optionIndex >= 0 && optionIndex < options.size()) {
+                return options.get(optionIndex);
+            }
+        }
+
+        String normalizedBool = normalizeBooleanToken(normalized);
+        if (!normalizedBool.isBlank()) {
+            return normalizedBool;
+        }
+        return trimmed;
+    }
+
+    private String blankToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private String canonicalizeAnswer(String answerRaw, List<String> options) {
@@ -556,6 +613,19 @@ public class QuizService {
             });
         } catch (Exception e) {
             return List.of();
+        }
+    }
+
+    private Map<String, String> readAnswers(String json) {
+        if (json == null || json.isBlank()) {
+            return Map.of();
+        }
+        try {
+            Map<String, String> parsed = objectMapper.readValue(json, new TypeReference<Map<String, String>>() {
+            });
+            return parsed == null ? Map.of() : parsed;
+        } catch (Exception e) {
+            return Map.of();
         }
     }
 
