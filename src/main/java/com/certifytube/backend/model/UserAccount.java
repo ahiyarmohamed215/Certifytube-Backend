@@ -42,4 +42,8 @@ public class UserAccount {
 
     @Column(name = "email_verified_at_utc")
     private Instant emailVerifiedAtUtc;
+
+    @Column(name = "active")
+    @Builder.Default
+    private Boolean active = true;
 }

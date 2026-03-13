@@ -9,4 +9,5 @@ import java.util.Optional;
 public interface QuizRepository extends JpaRepository<Quiz, String> {
     Optional<Quiz> findTopBySessionIdAndUserIdOrderByCreatedAtUtcDesc(String sessionId, Long userId);
     List<Quiz> findByUserId(Long userId);
+    List<Quiz> findByUserIdOrderByCreatedAtUtcDesc(Long userId);
 }

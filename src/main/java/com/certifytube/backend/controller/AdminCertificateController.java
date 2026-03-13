@@ -30,4 +30,15 @@ public class AdminCertificateController {
                 "status", "REVOKED"
         ));
     }
+
+    @PostMapping("/{certificateId}/activate")
+    public ResponseEntity<Map<String, String>> activate(@PathVariable String certificateId) {
+        log.info("Admin activating certificate {}", certificateId);
+        certificateService.activate(certificateId);
+        return ResponseEntity.ok(Map.of(
+                "message", "Certificate activated successfully",
+                "certificateId", certificateId,
+                "status", "ACTIVE"
+        ));
+    }
 }

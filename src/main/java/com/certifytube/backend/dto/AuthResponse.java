@@ -17,6 +17,7 @@ public class AuthResponse {
     private String role;
     private String name;
     private Boolean emailVerified;
+    private Boolean active;
     private String token;
     private String tokenType;
     private String message;

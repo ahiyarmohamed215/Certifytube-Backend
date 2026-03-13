@@ -6,16 +6,22 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.Instant;
+
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class AuthMeResponse {
+public class AdminUserSummaryDto {
     private Long userId;
     private String email;
-    private String role;
     private String name;
-    private Boolean emailVerified;
+    private String role;
     private Boolean active;
+    private Boolean emailVerified;
+    private Instant emailVerifiedAtUtc;
+    private Instant createdAtUtc;
+    private Long sessionCount;
+    private Long certificateCount;
 }

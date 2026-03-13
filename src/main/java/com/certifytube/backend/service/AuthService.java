@@ -64,6 +64,9 @@ public class AuthService {
         if (existing != null && Boolean.TRUE.equals(existing.getEmailVerified())) {
             throw new IllegalArgumentException("Email already registered");
         }
+        if (existing != null && Boolean.FALSE.equals(existing.getActive())) {
+            throw new IllegalStateException("Account is deactivated. Contact support.");
+        }
 
         Instant now = Instant.now();
         UserAccount user;
@@ -76,6 +79,7 @@ public class AuthService {
                     .createdAtUtc(now)
                     .emailVerified(false)
                     .emailVerifiedAtUtc(null)
+                    .active(true)
                     .build());
         } else {
             existing.setName(name);
@@ -103,6 +107,9 @@ public class AuthService {
 
         if (!passwordEncoder.matches(req.getPassword(), user.getPasswordHash())) {
             throw new IllegalArgumentException("Invalid email or password");
+        }
+        if (Boolean.FALSE.equals(user.getActive())) {
+            throw new IllegalStateException("Account is deactivated. Contact support.");
         }
         if (!Boolean.TRUE.equals(user.getEmailVerified())) {
             throw new IllegalStateException("Email not verified. Please verify your email first.");

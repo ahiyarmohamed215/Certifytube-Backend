@@ -158,6 +158,18 @@ public class CertificateService {
         log.info("Admin revoked Certificate={}", certificateId);
     }
 
+    @Transactional
+    public void activate(String certificateId) {
+        Certificate cert = certificateRepository.findById(certificateId)
+                .orElseThrow(() -> new IllegalArgumentException("Certificate not found"));
+        if ("ACTIVE".equals(cert.getStatus())) {
+            throw new IllegalStateException("Certificate is already active");
+        }
+        cert.setStatus("ACTIVE");
+        certificateRepository.save(cert);
+        log.info("Admin activated Certificate={}", certificateId);
+    }
+
     /* ─────────────────── DTO mapping ─────────────────── */
 
     private CertificateResponse toResponse(Certificate cert, boolean isPublic) {
