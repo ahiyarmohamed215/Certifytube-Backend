@@ -3,7 +3,7 @@ package com.certifytube.backend.model;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.Instant;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "certificates", indexes = {
@@ -59,7 +59,7 @@ public class Certificate {
     private String videoId;
 
     @Column(name = "created_at_utc", nullable = false)
-    private Instant createdAtUtc;
+    private LocalDateTime createdAtUtc;
 
     /** ACTIVE or REVOKED */
     @Column(name = "status", length = 16, nullable = false)

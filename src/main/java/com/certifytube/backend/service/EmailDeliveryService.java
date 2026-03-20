@@ -150,7 +150,7 @@ public class EmailDeliveryService {
             fallback.append("<p style='margin:14px 0 0;color:#475569;font-size:13px;'>")
                     .append(escapeHtml(primaryFallbackLabel))
                     .append("<br><a href='").append(escapeHtml(primaryFallbackUrl))
-                    .append("' style='color:#0f766e;'>")
+                    .append("' style='color:#2563eb;'>")
                     .append(escapeHtml(primaryFallbackUrl))
                     .append("</a></p>");
         }
@@ -158,7 +158,7 @@ public class EmailDeliveryService {
             fallback.append("<p style='margin:10px 0 0;color:#475569;font-size:13px;'>")
                     .append(escapeHtml(secondaryFallbackLabel))
                     .append("<br><a href='").append(escapeHtml(secondaryFallbackUrl))
-                    .append("' style='color:#0f766e;'>")
+                    .append("' style='color:#2563eb;'>")
                     .append(escapeHtml(secondaryFallbackUrl))
                     .append("</a></p>");
         }
@@ -176,7 +176,7 @@ public class EmailDeliveryService {
                         <td align="center">
                           <table role="presentation" width="640" cellspacing="0" cellpadding="0" style="max-width:640px;width:100%%;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;">
                             <tr>
-                              <td style="background:#0f766e;color:#ffffff;padding:18px 24px;font-size:14px;letter-spacing:.3px;">%s</td>
+                              <td style="background:#b91c1c;color:#ffffff;padding:18px 24px;font-size:14px;letter-spacing:.3px;">%s</td>
                             </tr>
                             <tr>
                               <td style="padding:28px 24px;">
@@ -184,7 +184,7 @@ public class EmailDeliveryService {
                                 <h1 style="margin:0 0 10px;font-size:24px;color:#0f172a;">%s</h1>
                                 <p style="margin:0 0 18px;color:#334155;line-height:1.6;font-size:15px;">%s</p>
                                 <p style="margin:0 0 18px;">
-                                  <a href="%s" style="background:#0f766e;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:8px;display:inline-block;font-weight:600;">
+                                  <a href="%s" style="background:#dc2626;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:8px;display:inline-block;font-weight:600;">
                                     %s
                                   </a>
                                 </p>

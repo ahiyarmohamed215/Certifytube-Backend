@@ -6,7 +6,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -34,8 +34,8 @@ public class AdminLearnerProfileResponse {
         private String videoId;
         private String videoTitle;
         private String status;
-        private Instant createdAtUtc;
-        private Instant endedAtUtc;
+        private LocalDateTime createdAtUtc;
+        private LocalDateTime endedAtUtc;
         private Double lastPositionSec;
         private Double videoDurationSec;
         private Map<String, Object> features;
@@ -54,7 +54,7 @@ public class AdminLearnerProfileResponse {
         private String videoTitle;
         private String difficulty;
         private Integer totalQuestions;
-        private Instant createdAtUtc;
+        private LocalDateTime createdAtUtc;
         private QuizAttemptInsight latestAttempt;
         private List<QuizQuestionInsight> questions;
     }
@@ -71,7 +71,7 @@ public class AdminLearnerProfileResponse {
         private Double scorePercent;
         private Boolean passedFlag;
         private Object answers;
-        private Instant createdAtUtc;
+        private LocalDateTime createdAtUtc;
     }
 
     @Getter
@@ -107,7 +107,7 @@ public class AdminLearnerProfileResponse {
         private String videoTitle;
         private String videoId;
         private String status;
-        private Instant createdAtUtc;
+        private LocalDateTime createdAtUtc;
     }
 
     @Getter
@@ -119,8 +119,8 @@ public class AdminLearnerProfileResponse {
         private Long cacheId;
         private String queryText;
         private LocalDate lastRefreshedOn;
-        private Instant createdAtUtc;
-        private Instant updatedAtUtc;
+        private LocalDateTime createdAtUtc;
+        private LocalDateTime updatedAtUtc;
         private List<YouTubeSearchItemInsight> items;
     }
 

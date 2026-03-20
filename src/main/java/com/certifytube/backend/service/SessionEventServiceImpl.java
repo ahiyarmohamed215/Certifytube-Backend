@@ -13,7 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -112,7 +112,7 @@ public class SessionEventServiceImpl implements SessionEventService {
                     .clientEventMs(req.getClientEventMs())
                     .seekFromSec(req.getSeekFromSec())
                     .seekToSec(req.getSeekToSec())
-                    .createdAtUtc(Instant.now())
+                    .createdAtUtc(LocalDateTime.now())
                     .build();
 
             entities.add(entity);

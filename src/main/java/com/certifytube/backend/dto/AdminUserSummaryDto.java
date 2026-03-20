@@ -6,7 +6,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.time.Instant;
+import java.time.LocalDateTime;
 
 @Getter
 @Setter
@@ -20,8 +20,8 @@ public class AdminUserSummaryDto {
     private String role;
     private Boolean active;
     private Boolean emailVerified;
-    private Instant emailVerifiedAtUtc;
-    private Instant createdAtUtc;
+    private LocalDateTime emailVerifiedAtUtc;
+    private LocalDateTime createdAtUtc;
     private Long sessionCount;
     private Long certificateCount;
 }

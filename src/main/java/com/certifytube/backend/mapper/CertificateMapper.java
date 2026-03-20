@@ -12,7 +12,7 @@ public interface CertificateMapper {
     @Mapping(source = "createdAtUtc", target = "createdAtUtc", dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'")
     CertificateResponse toResponse(Certificate certificate);
 
-    default String mapInstant(java.time.Instant instant) {
-        return instant == null ? null : instant.toString();
+    default String mapLocalDateTime(java.time.LocalDateTime dateTime) {
+        return dateTime == null ? null : dateTime.toString();
     }
 }

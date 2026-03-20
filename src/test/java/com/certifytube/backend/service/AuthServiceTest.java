@@ -23,7 +23,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -115,7 +115,7 @@ class AuthServiceTest {
                 .passwordHash("hashed-password")
                 .role(Role.LEARNER)
                 .emailVerified(true)
-                .createdAtUtc(Instant.now())
+                .createdAtUtc(LocalDateTime.now())
                 .build();
 
         when(userAccountRepository.findByEmail("user@example.com")).thenReturn(Optional.of(user));
@@ -140,13 +140,13 @@ class AuthServiceTest {
     void verifyEmailShouldBeIdempotentWhenTokenIsReused() {
         String rawToken = "sample-token";
         String tokenHash = sha256Hex(rawToken);
-        Instant future = Instant.now().plusSeconds(3600);
+        LocalDateTime future = LocalDateTime.now().plusSeconds(3600);
 
         EmailVerificationToken token = EmailVerificationToken.builder()
                 .id(101L)
                 .userId(44L)
                 .tokenHash(tokenHash)
-                .createdAtUtc(Instant.now())
+                .createdAtUtc(LocalDateTime.now())
                 .expiresAtUtc(future)
                 .usedAtUtc(null)
                 .build();
@@ -158,7 +158,7 @@ class AuthServiceTest {
                 .passwordHash("hash")
                 .role(Role.LEARNER)
                 .emailVerified(false)
-                .createdAtUtc(Instant.now())
+                .createdAtUtc(LocalDateTime.now())
                 .build();
 
         when(emailVerificationTokenRepository.findByTokenHash(tokenHash)).thenReturn(Optional.of(token));
@@ -179,7 +179,7 @@ class AuthServiceTest {
     void verifyEmailShouldRejectAlreadyUsedTokenWhenUserStillNotVerified() {
         String rawToken = "used-token";
         String tokenHash = sha256Hex(rawToken);
-        Instant now = Instant.now();
+        LocalDateTime now = LocalDateTime.now();
 
         EmailVerificationToken token = EmailVerificationToken.builder()
                 .id(55L)

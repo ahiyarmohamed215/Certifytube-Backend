@@ -5,7 +5,7 @@ import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
-import java.time.Instant;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(
@@ -96,9 +96,9 @@ public class SessionFeatures {
 
     @CreationTimestamp
     @Column(name = "created_at_utc", nullable = false, updatable = false)
-    private Instant createdAtUtc;
+    private LocalDateTime createdAtUtc;
 
     @UpdateTimestamp
     @Column(name = "updated_at_utc", nullable = false)
-    private Instant updatedAtUtc;
+    private LocalDateTime updatedAtUtc;
 }

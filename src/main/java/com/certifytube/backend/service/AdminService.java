@@ -30,7 +30,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -114,7 +114,7 @@ public class AdminService {
 
         if (req.getEmailVerified() != null) {
             user.setEmailVerified(req.getEmailVerified());
-            user.setEmailVerifiedAtUtc(Boolean.TRUE.equals(req.getEmailVerified()) ? Instant.now() : null);
+            user.setEmailVerifiedAtUtc(Boolean.TRUE.equals(req.getEmailVerified()) ? LocalDateTime.now() : null);
         }
 
         return toUserSummary(userAccountRepository.save(user));

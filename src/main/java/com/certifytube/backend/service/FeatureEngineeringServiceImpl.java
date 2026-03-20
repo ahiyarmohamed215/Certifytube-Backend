@@ -11,6 +11,8 @@ import org.springframework.stereotype.Service;
 import java.io.InputStream;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.*;
 
 @Service
@@ -79,8 +81,8 @@ public class FeatureEngineeringServiceImpl implements FeatureEngineeringService 
         long numBuffer = events.stream().filter(e -> "buffering".equalsIgnoreCase(e.getEventType())).count();
         boolean completed = events.stream().anyMatch(e -> "ended".equalsIgnoreCase(e.getEventType()));
 
-        Instant start = timelineEvents.get(0).effectiveTs();
-        Instant end = timelineEvents.get(timelineEvents.size() - 1).effectiveTs();
+        LocalDateTime start = timelineEvents.get(0).effectiveTs();
+        LocalDateTime end = timelineEvents.get(timelineEvents.size() - 1).effectiveTs();
         double sessionDurationSec = Math.max(Duration.between(start, end).toMillis() / 1000.0, 0.0);
 
         double videoDurationSec = events.stream()
@@ -115,7 +117,7 @@ public class FeatureEngineeringServiceImpl implements FeatureEngineeringService 
         int longPauseCount = 0;
         double longPauseTimeSec = 0.0;
 
-        Instant lastTs = null;
+        LocalDateTime lastTs = null;
         Integer lastState = null; // 1=playing,2=paused,3=buffering
         double lastRate = 1.0;
         double lastPos = 0.0;
@@ -123,7 +125,7 @@ public class FeatureEngineeringServiceImpl implements FeatureEngineeringService 
 
         for (TrustedEvent te : timelineEvents) {
             SessionEvent row = te.row();
-            Instant curTs = te.effectiveTs();
+            LocalDateTime curTs = te.effectiveTs();
             Integer curState = row.getPlayerState();
             Double curRateObj = row.getPlaybackRate();
             Double curPosObj = row.getCurrentTimeSec();
@@ -322,18 +324,18 @@ public class FeatureEngineeringServiceImpl implements FeatureEngineeringService 
         if (events.isEmpty()) return new TrustedTimeline(out, 0, 0, 0);
 
         long firstServerMs = Optional.ofNullable(events.get(0).getCreatedAtUtc())
-                .orElse(Instant.now())
-                .toEpochMilli();
+                .map(ts -> ts.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli())
+                .orElse(System.currentTimeMillis());
         Long firstClientMs = null;
         Long prevNormalizedClientMs = null;
-        Instant prevEffectiveTs = null;
+        LocalDateTime prevEffectiveTs = null;
 
         int nonMonotonicClientCount = 0;
         int driftViolationCount = 0;
         int fallbackToServerCount = 0;
 
         for (SessionEvent row : events) {
-            Instant serverTs = Optional.ofNullable(row.getCreatedAtUtc()).orElse(Instant.now());
+            LocalDateTime serverTs = Optional.ofNullable(row.getCreatedAtUtc()).orElse(LocalDateTime.now());
             Long clientMs = row.getClientEventMs();
             Long normalizedClientMs = null;
 
@@ -349,11 +351,11 @@ public class FeatureEngineeringServiceImpl implements FeatureEngineeringService 
                 }
             }
 
-            Instant effectiveTs = serverTs;
+            LocalDateTime effectiveTs = serverTs;
             if (normalizedClientMs != null) {
-                long driftMs = Math.abs(normalizedClientMs - serverTs.toEpochMilli());
+                long driftMs = Math.abs(normalizedClientMs - serverTs.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli());
                 if (driftMs <= MAX_CLIENT_SERVER_DRIFT_SEC * 1000) {
-                    effectiveTs = Instant.ofEpochMilli(normalizedClientMs);
+                    effectiveTs = LocalDateTime.ofInstant(Instant.ofEpochMilli(normalizedClientMs), ZoneId.systemDefault());
                 } else {
                     driftViolationCount += 1;
                     fallbackToServerCount += 1;
@@ -374,7 +376,7 @@ public class FeatureEngineeringServiceImpl implements FeatureEngineeringService 
         return new TrustedTimeline(out, nonMonotonicClientCount, driftViolationCount, fallbackToServerCount);
     }
 
-    private record TrustedEvent(SessionEvent row, Instant effectiveTs) {}
+    private record TrustedEvent(SessionEvent row, LocalDateTime effectiveTs) {}
 
     private record TrustedTimeline(
             List<TrustedEvent> events,

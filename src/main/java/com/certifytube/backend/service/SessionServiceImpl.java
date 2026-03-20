@@ -6,7 +6,7 @@ import com.certifytube.backend.repository.SessionRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
 
-import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -32,7 +32,7 @@ public class SessionServiceImpl implements SessionService {
 
         // No open session → create a new one
         String sessionId = UUID.randomUUID().toString();
-        Session s = new Session(sessionId, userId, videoId, videoTitle, Instant.now());
+        Session s = new Session(sessionId, userId, videoId, videoTitle, LocalDateTime.now());
         return sessionRepository.save(s);
     }
 
@@ -42,7 +42,7 @@ public class SessionServiceImpl implements SessionService {
         Session session = sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new RuntimeException("Session not found"));
 
-        session.setEndedAtUtc(Instant.now());
+        session.setEndedAtUtc(LocalDateTime.now());
         session.setStatus("COMPLETED");
         sessionRepository.save(session);
     }

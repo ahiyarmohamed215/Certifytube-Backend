@@ -15,7 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
-import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -119,7 +119,7 @@ public class QuizService {
                     .build();
         }
 
-        Instant windowStart = latest.getCreatedAtUtc() == null ? Instant.EPOCH : latest.getCreatedAtUtc();
+        LocalDateTime windowStart = latest.getCreatedAtUtc() == null ? LocalDateTime.MIN : latest.getCreatedAtUtc();
         int failedUsed = (int) quizAttemptRepository.countFailedAttemptsForSessionSince(
                 user.getId(),
                 sessionId,
@@ -168,7 +168,7 @@ public class QuizService {
             throw new IllegalStateException("Engagement score is below quiz eligibility threshold");
         }
 
-        Instant engagementWindowStart = latest.getCreatedAtUtc() == null ? Instant.EPOCH : latest.getCreatedAtUtc();
+        LocalDateTime engagementWindowStart = latest.getCreatedAtUtc() == null ? LocalDateTime.MIN : latest.getCreatedAtUtc();
         long failedAttemptsInWindow = quizAttemptRepository.countFailedAttemptsForSessionSince(
                 user.getId(),
                 session.getSessionId(),
@@ -218,7 +218,7 @@ public class QuizService {
                 .videoTitle(session.getVideoTitle())
                 .difficulty(req.getDifficulty() != null ? req.getDifficulty() : "medium")
                 .totalQuestions(drafts.size())
-                .createdAtUtc(Instant.now())
+                .createdAtUtc(LocalDateTime.now())
                 .build());
         log.info("Saved Quiz generated for session={} into DB", session.getSessionId());
 
@@ -284,7 +284,7 @@ public class QuizService {
             throw new IllegalStateException("Quiz already passed");
         }
 
-        Instant attemptWindowStart = resolveAttemptWindowStart(quiz.getSessionId());
+        LocalDateTime attemptWindowStart = resolveAttemptWindowStart(quiz.getSessionId());
         long failedAttemptsInWindow = quizAttemptRepository.countFailedAttemptsForSessionSince(
                 user.getId(),
                 quiz.getSessionId(),
@@ -312,7 +312,7 @@ public class QuizService {
                 .totalCount(total)
                 .scorePercent(score)
                 .passedFlag(passed)
-                .createdAtUtc(Instant.now())
+                .createdAtUtc(LocalDateTime.now())
                 .build());
         log.info("Saved QuizAttempt for session={} to DB: passed={}, score={}", quiz.getSessionId(), passed, score);
 
@@ -343,14 +343,14 @@ public class QuizService {
                 .build();
     }
 
-    private Instant resolveAttemptWindowStart(String sessionId) {
+    private LocalDateTime resolveAttemptWindowStart(String sessionId) {
         EngagementResult latest = engagementResultRepository.findTopBySessionIdOrderByCreatedAtUtcDesc(sessionId)
                 .orElseThrow(() -> new IllegalStateException("Analyze session first"));
 
         if (latest.getEngagementScore() == null || latest.getEngagementScore() < minEngagementScore) {
             throw new IllegalStateException("Engagement score is below quiz eligibility threshold");
         }
-        return latest.getCreatedAtUtc() == null ? Instant.EPOCH : latest.getCreatedAtUtc();
+        return latest.getCreatedAtUtc() == null ? LocalDateTime.MIN : latest.getCreatedAtUtc();
     }
 
     @Transactional(readOnly = true)

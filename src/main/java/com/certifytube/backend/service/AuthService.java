@@ -30,6 +30,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
@@ -68,7 +70,7 @@ public class AuthService {
             throw new IllegalStateException("Account is deactivated. Contact support.");
         }
 
-        Instant now = Instant.now();
+        LocalDateTime now = LocalDateTime.now();
         UserAccount user;
         if (existing == null) {
             user = userAccountRepository.save(UserAccount.builder()
@@ -134,11 +136,11 @@ public class AuthService {
             if (jti != null && exp != null && exp.isAfter(Instant.now()) && !revokedTokenRepository.existsByJti(jti)) {
                 revokedTokenRepository.save(RevokedToken.builder()
                         .jti(jti)
-                        .expiresAtUtc(exp)
-                        .revokedAtUtc(Instant.now())
+                        .expiresAtUtc(LocalDateTime.ofInstant(exp, ZoneId.systemDefault()))
+                        .revokedAtUtc(LocalDateTime.now())
                         .build());
             }
-            revokedTokenRepository.deleteByExpiresAtUtcBefore(Instant.now());
+            revokedTokenRepository.deleteByExpiresAtUtcBefore(LocalDateTime.now());
         } catch (JwtException | IllegalArgumentException ignored) {
             // Invalid/expired token can be treated as already logged out.
         }
@@ -149,7 +151,7 @@ public class AuthService {
         String email = req.getEmail().trim().toLowerCase();
         authRateLimitService.enforceAndRecord("FORGOT_PASSWORD", email, clientIp);
 
-        Instant now = Instant.now();
+        LocalDateTime now = LocalDateTime.now();
         passwordResetTokenRepository.deleteByExpiresAtUtcBefore(now);
         emailVerificationTokenRepository.deleteByExpiresAtUtcBefore(now);
 
@@ -175,7 +177,7 @@ public class AuthService {
         String email = req.getEmail().trim().toLowerCase();
         authRateLimitService.enforceAndRecord("RESEND_VERIFICATION", email, clientIp);
 
-        Instant now = Instant.now();
+        LocalDateTime now = LocalDateTime.now();
         emailVerificationTokenRepository.deleteByExpiresAtUtcBefore(now);
 
         UserAccount user = userAccountRepository.findByEmail(email).orElse(null);
@@ -192,7 +194,7 @@ public class AuthService {
         if (tokenRaw == null || tokenRaw.isBlank()) {
             throw new TokenValidationException("TOKEN_MISSING", "Verification token is required");
         }
-        Instant now = Instant.now();
+        LocalDateTime now = LocalDateTime.now();
         emailVerificationTokenRepository.deleteByExpiresAtUtcBefore(now);
 
         String tokenHash = sha256Hex(tokenRaw.trim());
@@ -239,7 +241,7 @@ public class AuthService {
 
     @Transactional
     public void resetPassword(ResetPasswordRequest req) {
-        Instant now = Instant.now();
+        LocalDateTime now = LocalDateTime.now();
         passwordResetTokenRepository.deleteByExpiresAtUtcBefore(now);
 
         String tokenRaw = req.getToken().trim();
@@ -284,28 +286,28 @@ public class AuthService {
         passwordResetTokenRepository.deleteByUserId(userId);
     }
 
-    private String createAndStorePasswordResetToken(Long userId, Instant now) {
+    private String createAndStorePasswordResetToken(Long userId, LocalDateTime now) {
         passwordResetTokenRepository.deleteByUserId(userId);
         String rawToken = createSecureToken();
         PasswordResetToken token = PasswordResetToken.builder()
                 .userId(userId)
                 .tokenHash(sha256Hex(rawToken))
                 .createdAtUtc(now)
-                .expiresAtUtc(now.plus(passwordResetExpiryMinutes, ChronoUnit.MINUTES))
+                .expiresAtUtc(now.plusMinutes(passwordResetExpiryMinutes))
                 .usedAtUtc(null)
                 .build();
         passwordResetTokenRepository.save(token);
         return rawToken;
     }
 
-    private String createAndStoreEmailVerificationToken(Long userId, Instant now) {
+    private String createAndStoreEmailVerificationToken(Long userId, LocalDateTime now) {
         emailVerificationTokenRepository.deleteByUserId(userId);
         String rawToken = createSecureToken();
         EmailVerificationToken token = EmailVerificationToken.builder()
                 .userId(userId)
                 .tokenHash(sha256Hex(rawToken))
                 .createdAtUtc(now)
-                .expiresAtUtc(now.plus(emailVerificationExpiryHours, ChronoUnit.HOURS))
+                .expiresAtUtc(now.plusHours(emailVerificationExpiryHours))
                 .usedAtUtc(null)
                 .build();
         emailVerificationTokenRepository.save(token);

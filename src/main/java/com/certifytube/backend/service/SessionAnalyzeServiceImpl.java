@@ -21,7 +21,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
-import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.*;
 
 @Slf4j
@@ -101,7 +101,7 @@ public class SessionAnalyzeServiceImpl implements SessionAnalyzeService {
         if (recent.isPresent()) {
             EngagementResult cached = recent.get();
             if (cached.getCreatedAtUtc() != null
-                    && Duration.between(cached.getCreatedAtUtc(), Instant.now())
+                    && Duration.between(cached.getCreatedAtUtc(), LocalDateTime.now())
                             .getSeconds() < IDEMPOTENCY_WINDOW_SEC) {
                 return SessionAnalyzeResponse.builder()
                         .sessionId(sessionId)
@@ -169,7 +169,7 @@ public class SessionAnalyzeServiceImpl implements SessionAnalyzeService {
                     .explanation(explanation)
                     .topPositiveJson(mapper.writeValueAsString(topPositive))
                     .topNegativeJson(mapper.writeValueAsString(topNegative))
-                    .createdAtUtc(Instant.now())
+                    .createdAtUtc(LocalDateTime.now())
                     .build());
             log.info("Saved EngagementResult to DB with score={} and status={} for session={}", score, status, sessionId);
         } catch (Exception e) {

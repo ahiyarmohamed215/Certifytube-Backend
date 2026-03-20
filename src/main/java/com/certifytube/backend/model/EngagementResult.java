@@ -2,7 +2,7 @@ package com.certifytube.backend.model;
 
 import jakarta.persistence.*;
 import lombok.*;
-import java.time.Instant;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "engagement_results", indexes = {
@@ -44,5 +44,5 @@ public class EngagementResult {
     private String topNegativeJson;
 
     @Column(nullable = false)
-    private Instant createdAtUtc;
+    private LocalDateTime createdAtUtc;
 }

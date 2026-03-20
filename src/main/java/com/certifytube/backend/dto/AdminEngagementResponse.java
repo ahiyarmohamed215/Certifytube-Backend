@@ -1,7 +1,7 @@
 package com.certifytube.backend.dto;
 
 import lombok.*;
-import java.time.Instant;
+import java.time.LocalDateTime;
 
 @Getter
 @Setter
@@ -20,5 +20,5 @@ public class AdminEngagementResponse {
     private Object topPositive;
     private Object topNegative;
 
-    private Instant createdAtUtc;
+    private LocalDateTime createdAtUtc;
 }

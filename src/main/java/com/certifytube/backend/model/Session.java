@@ -5,7 +5,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import java.time.Instant;
+import java.time.LocalDateTime;
 
 @AllArgsConstructor
 @Setter
@@ -28,10 +28,10 @@ public class Session {
     private String videoTitle;
 
     @Column(name = "created_at_utc", nullable = false)
-    private Instant createdAtUtc;
+    private LocalDateTime createdAtUtc;
 
     @Column(name = "ended_at_utc")
-    private Instant endedAtUtc;
+    private LocalDateTime endedAtUtc;
 
     /** Last known playback position in seconds (for resume). */
     @Column(name = "last_position_sec")
@@ -51,7 +51,7 @@ public class Session {
         this.status = "ACTIVE";
     }
 
-    public Session(String sessionId, String userId, String videoId, String videoTitle, Instant createdAtUtc) {
+    public Session(String sessionId, String userId, String videoId, String videoTitle, LocalDateTime createdAtUtc) {
         this.sessionId = sessionId;
         this.userId = userId;
         this.videoId = videoId;

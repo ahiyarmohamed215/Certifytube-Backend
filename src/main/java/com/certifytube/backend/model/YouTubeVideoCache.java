@@ -3,7 +3,7 @@ package com.certifytube.backend.model;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.Instant;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "youtube_video_cache", uniqueConstraints = @UniqueConstraint(name = "uk_youtube_video_cache_video_id", columnNames = "video_id"), indexes = {
@@ -46,5 +46,5 @@ public class YouTubeVideoCache {
         private String categoryId;
 
         @Column(name = "updated_at_utc", nullable = false)
-        private Instant updatedAtUtc;
+        private LocalDateTime updatedAtUtc;
 }

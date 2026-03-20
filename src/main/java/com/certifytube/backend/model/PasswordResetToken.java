@@ -3,7 +3,7 @@ package com.certifytube.backend.model;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.Instant;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "password_reset_tokens", indexes = {
@@ -29,11 +29,11 @@ public class PasswordResetToken {
     private String tokenHash;
 
     @Column(name = "expires_at_utc", nullable = false)
-    private Instant expiresAtUtc;
+    private LocalDateTime expiresAtUtc;
 
     @Column(name = "used_at_utc")
-    private Instant usedAtUtc;
+    private LocalDateTime usedAtUtc;
 
     @Column(name = "created_at_utc", nullable = false)
-    private Instant createdAtUtc;
+    private LocalDateTime createdAtUtc;
 }

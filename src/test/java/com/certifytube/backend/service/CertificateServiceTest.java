@@ -19,7 +19,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -111,7 +111,7 @@ class CertificateServiceTest {
         cert.setQuizThreshold(0.8);
         cert.setVerificationToken(token);
         cert.setStatus("ACTIVE");
-        cert.setCreatedAtUtc(Instant.parse("2026-03-10T12:00:00Z"));
+        cert.setCreatedAtUtc(LocalDateTime.parse("2026-03-10T12:00:00"));
 
         when(certificateRepository.findByVerificationToken(token)).thenReturn(Optional.of(cert));
 

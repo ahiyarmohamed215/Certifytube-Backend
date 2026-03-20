@@ -3,7 +3,7 @@ package com.certifytube.backend.model;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.Instant;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "auth_rate_limit_events", indexes = {
@@ -31,5 +31,5 @@ public class AuthRateLimitEvent {
     private String subjectHash;
 
     @Column(name = "created_at_utc", nullable = false)
-    private Instant createdAtUtc;
+    private LocalDateTime createdAtUtc;
 }

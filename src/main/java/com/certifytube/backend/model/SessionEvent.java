@@ -3,7 +3,7 @@ package com.certifytube.backend.model;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.Instant;
+import java.time.LocalDateTime;
 
 @NoArgsConstructor
 @AllArgsConstructor
@@ -51,7 +51,7 @@ public class SessionEvent {
     private Double videoDurationSec;
 
     @Column(name = "created_at_utc", nullable = false)
-    private Instant createdAtUtc;
+    private LocalDateTime createdAtUtc;
 
     @Column(name = "client_created_at_local", length = 40)
     private String clientCreatedAtLocal;

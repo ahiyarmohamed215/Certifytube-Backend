@@ -19,7 +19,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -97,7 +97,7 @@ public class YouTubeSearchServiceImpl implements YouTubeSearchService {
 
         YouTubeSearchCache cache = searchCacheRepository.findByQueryText(normalizedQuery)
                 .orElseGet(() -> {
-                    Instant now = Instant.now();
+                    LocalDateTime now = LocalDateTime.now();
                     return searchCacheRepository.save(YouTubeSearchCache.builder()
                             .queryText(normalizedQuery)
                             .lastRefreshedOn(LocalDate.of(1970, 1, 1))
@@ -131,7 +131,7 @@ public class YouTubeSearchServiceImpl implements YouTubeSearchService {
         }
 
         cache.setLastRefreshedOn(today);
-        cache.setUpdatedAtUtc(Instant.now());
+        cache.setUpdatedAtUtc(LocalDateTime.now());
         return searchCacheRepository.save(cache);
     }
 
@@ -171,7 +171,7 @@ public class YouTubeSearchServiceImpl implements YouTubeSearchService {
         entity.setPublishedAt(dto.getPublishedAt());
         entity.setIframeUrl(dto.getIframeUrl());
         entity.setCategoryId(dto.getCategoryId());
-        entity.setUpdatedAtUtc(Instant.now());
+        entity.setUpdatedAtUtc(LocalDateTime.now());
         return videoCacheRepository.save(entity);
     }
 
@@ -213,10 +213,10 @@ public class YouTubeSearchServiceImpl implements YouTubeSearchService {
         return upsertVideo(dto);
     }
 
-    private boolean isStale(Instant updatedAtUtc) {
+    private boolean isStale(LocalDateTime updatedAtUtc) {
         if (updatedAtUtc == null)
             return true;
-        LocalDate updatedDay = updatedAtUtc.atZone(java.time.ZoneOffset.UTC).toLocalDate();
+        LocalDate updatedDay = updatedAtUtc.toLocalDate();
         return !updatedDay.isEqual(LocalDate.now());
     }
 

@@ -31,7 +31,7 @@ import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
-import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.UUID;
@@ -77,7 +77,7 @@ public class CertificateService {
                             .sessionId(sessionId)
                             .quizAttemptId(attempt.getId())
                             .scorePercent(attempt.getScorePercent())
-                            .certificateNumber("CT-" + Instant.now().toEpochMilli() + "-" + userId)
+                            .certificateNumber("CT-" + System.currentTimeMillis() + "-" + userId)
                             .verificationToken(UUID.randomUUID().toString().replace("-", ""))
                             .finalEngagementScore(engagement.getEngagementScore())
                             .finalQuizScore(attempt.getScorePercent() / 100.0) // 0-1 range
@@ -88,7 +88,7 @@ public class CertificateService {
                             .engagementThreshold(engagementThresholdConfig)
                             .quizThreshold(quizThresholdConfig / 100.0)  // store as 0-1
                             .status("ACTIVE")
-                            .createdAtUtc(Instant.now())
+                            .createdAtUtc(LocalDateTime.now())
                             // PDF generated after first save so entity has an ID
                             .pdfBytes(new byte[0]) 
                             .build());
@@ -336,7 +336,7 @@ public class CertificateService {
                     certificateIdShort = certificateIdShort.substring(0, 8);
                 }
                 cs.showText("Certificate ID: " + sanitizePdfText(fontBold, certificateIdShort.toUpperCase()));
-                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MMM dd, yyyy").withZone(ZoneId.of("UTC"));
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MMM dd, yyyy");
                 String dateStr = formatter.format(cert.getCreatedAtUtc());
                 cs.newLineAtOffset(220, 0);
                 cs.showText("Issued: " + dateStr);

@@ -3,7 +3,7 @@ package com.certifytube.backend.model;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.LocalDate;
 
 @Entity
@@ -32,8 +32,8 @@ public class YouTubeSearchCache {
     private LocalDate lastRefreshedOn;
 
     @Column(name = "created_at_utc", nullable = false, updatable = false)
-    private Instant createdAtUtc;
+    private LocalDateTime createdAtUtc;
 
     @Column(name = "updated_at_utc", nullable = false)
-    private Instant updatedAtUtc;
+    private LocalDateTime updatedAtUtc;
 }

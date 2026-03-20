@@ -10,7 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 
 @Service
@@ -36,8 +36,8 @@ public class AuthRateLimitService {
 
     @Transactional
     public void enforceAndRecord(String action, String email, String clientIp) {
-        Instant now = Instant.now();
-        Instant cutoff = now.minus(windowMinutes, ChronoUnit.MINUTES);
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime cutoff = now.minus(windowMinutes, ChronoUnit.MINUTES);
 
         String emailHash = null;
         if (email != null && !email.isBlank()) {
@@ -60,7 +60,7 @@ public class AuthRateLimitService {
         }
     }
 
-    private void enforceSubjectLimit(String action, String subjectHash, long maxRequests, Instant cutoff, Instant now) {
+    private void enforceSubjectLimit(String action, String subjectHash, long maxRequests, LocalDateTime cutoff, LocalDateTime now) {
         if (maxRequests <= 0) {
             return;
         }
@@ -82,7 +82,7 @@ public class AuthRateLimitService {
         }
     }
 
-    private void record(String action, String subjectType, String subjectHash, Instant now) {
+    private void record(String action, String subjectType, String subjectHash, LocalDateTime now) {
         authRateLimitEventRepository.save(AuthRateLimitEvent.builder()
                 .action(action)
                 .subjectType(subjectType)

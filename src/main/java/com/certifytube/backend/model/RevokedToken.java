@@ -3,7 +3,7 @@ package com.certifytube.backend.model;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.Instant;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "revoked_tokens", indexes = {
@@ -25,8 +25,8 @@ public class RevokedToken {
     private String jti;
 
     @Column(name = "expires_at_utc", nullable = false)
-    private Instant expiresAtUtc;
+    private LocalDateTime expiresAtUtc;
 
     @Column(name = "revoked_at_utc", nullable = false)
-    private Instant revokedAtUtc;
+    private LocalDateTime revokedAtUtc;
 }

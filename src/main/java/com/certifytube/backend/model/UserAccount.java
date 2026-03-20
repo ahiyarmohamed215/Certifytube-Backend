@@ -3,7 +3,7 @@ package com.certifytube.backend.model;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.Instant;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "user_accounts", indexes = {
@@ -31,7 +31,7 @@ public class UserAccount {
     private Role role;
 
     @Column(name = "created_at_utc", nullable = false)
-    private Instant createdAtUtc;
+    private LocalDateTime createdAtUtc;
 
     @Column(length = 255)
     private String name;
@@ -41,7 +41,7 @@ public class UserAccount {
     private Boolean emailVerified = false;
 
     @Column(name = "email_verified_at_utc")
-    private Instant emailVerifiedAtUtc;
+    private LocalDateTime emailVerifiedAtUtc;
 
     @Column(name = "active")
     @Builder.Default
