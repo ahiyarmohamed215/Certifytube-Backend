@@ -240,51 +240,22 @@ Authorization: Bearer {{token}}
 ### ADMIN (requires ADMIN role)
 ### ═════════════════════════════════════════════════
 
-### 18. Admin: Get stats
-GET {{host}}/api/admin/stats
+### 18. Admin: List learners
+GET {{host}}/api/admin/learners
 Authorization: Bearer {{token}}
 
-### 19. Admin: List all users
-GET {{host}}/api/admin/users
+### 19. Admin: Learner profile
+GET {{host}}/api/admin/learners/1/profile?searchLimit=30
 Authorization: Bearer {{token}}
 
-### 20. Admin: Get user by ID
-GET {{host}}/api/admin/users/1
-Authorization: Bearer {{token}}
-
-### 21. Admin: Update user role
-PUT {{host}}/api/admin/users/1/role
-Content-Type: application/json
-Authorization: Bearer {{token}}
-
-{
-  "role": "ADMIN"
-}
-
-### 22. Admin: Delete user
-DELETE {{host}}/api/admin/users/2
-Authorization: Bearer {{token}}
-
-### 23. Admin: List sessions
-GET {{host}}/api/admin/sessions
-Authorization: Bearer {{token}}
-
-### 24. Admin: Delete session
-DELETE {{host}}/api/admin/sessions/SESSION_ID_HERE
-Authorization: Bearer {{token}}
-
-### 25. Admin: List certificates
-GET {{host}}/api/admin/certificates
-Authorization: Bearer {{token}}
-
-### 26. Admin: Delete certificate
+### 20. Admin: Delete certificate
 DELETE {{host}}/api/admin/certificates/CERT_ID_HERE
 Authorization: Bearer {{token}}
 
-### 27. Admin: List quizzes
-GET {{host}}/api/admin/quizzes
+### 21. Admin: Revoke certificate
+POST {{host}}/api/admin/certificates/CERT_ID_HERE/revoke
 Authorization: Bearer {{token}}
 
-### 28. Admin: Delete quiz
-DELETE {{host}}/api/admin/quizzes/QUIZ_ID_HERE
+### 22. Admin: Activate certificate
+POST {{host}}/api/admin/certificates/CERT_ID_HERE/activate
 Authorization: Bearer {{token}}

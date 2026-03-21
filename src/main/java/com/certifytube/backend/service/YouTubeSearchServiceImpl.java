@@ -14,6 +14,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.util.UriComponentsBuilder;
 import org.slf4j.Logger;
@@ -24,7 +25,6 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -95,16 +95,7 @@ public class YouTubeSearchServiceImpl implements YouTubeSearchService {
     protected YouTubeSearchCache refreshQueryCacheIfNeeded(String normalizedQuery) {
         LocalDate today = LocalDate.now();
 
-        YouTubeSearchCache cache = searchCacheRepository.findByQueryText(normalizedQuery)
-                .orElseGet(() -> {
-                    LocalDateTime now = LocalDateTime.now();
-                    return searchCacheRepository.save(YouTubeSearchCache.builder()
-                            .queryText(normalizedQuery)
-                            .lastRefreshedOn(LocalDate.of(1970, 1, 1))
-                            .createdAtUtc(now)
-                            .updatedAtUtc(now)
-                            .build());
-                });
+        YouTubeSearchCache cache = findOrCreateCacheWithLock(normalizedQuery);
 
         List<YouTubeSearchCacheItem> existingItems = cacheItemRepository.findByCacheOrderByPositionIndexAsc(cache);
         boolean hasFreshData = cache.getLastRefreshedOn() != null
@@ -115,8 +106,18 @@ public class YouTubeSearchServiceImpl implements YouTubeSearchService {
         }
 
         log.info("Fetching from YouTube API for query: {}", normalizedQuery);
-        String rawJson = youTubeClient.searchVideos(normalizedQuery, MAX_VIDEOS_PER_QUERY);
-        List<YouTubeVideoDto> fetched = mapSearchVideos(rawJson);
+        List<YouTubeVideoDto> fetched;
+        try {
+            String rawJson = youTubeClient.searchVideos(normalizedQuery, MAX_VIDEOS_PER_QUERY);
+            fetched = mapSearchVideos(rawJson);
+        } catch (RuntimeException ex) {
+            if (!existingItems.isEmpty()) {
+                log.warn("YouTube refresh failed for query '{}'; serving stale cache. Reason: {}", normalizedQuery,
+                        ex.getMessage());
+                return cache;
+            }
+            throw ex;
+        }
 
         cacheItemRepository.deleteByCache(cache);
         cacheItemRepository.flush();
@@ -133,6 +134,26 @@ public class YouTubeSearchServiceImpl implements YouTubeSearchService {
         cache.setLastRefreshedOn(today);
         cache.setUpdatedAtUtc(LocalDateTime.now());
         return searchCacheRepository.save(cache);
+    }
+
+    private YouTubeSearchCache findOrCreateCacheWithLock(String normalizedQuery) {
+        return searchCacheRepository.findByQueryText(normalizedQuery)
+                .orElseGet(() -> createCacheRow(normalizedQuery));
+    }
+
+    private YouTubeSearchCache createCacheRow(String normalizedQuery) {
+        LocalDateTime now = LocalDateTime.now();
+        try {
+            return searchCacheRepository.saveAndFlush(YouTubeSearchCache.builder()
+                    .queryText(normalizedQuery)
+                    .lastRefreshedOn(LocalDate.of(1970, 1, 1))
+                    .createdAtUtc(now)
+                    .updatedAtUtc(now)
+                    .build());
+        } catch (DataIntegrityViolationException ignored) {
+            return searchCacheRepository.findByQueryText(normalizedQuery)
+                    .orElseThrow(() -> new IllegalStateException("Failed to load query cache row after concurrent insert"));
+        }
     }
 
     @Transactional(readOnly = true)

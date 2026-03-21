@@ -1,7 +1,9 @@
 package com.certifytube.backend.service;
 
+import com.certifytube.backend.model.Session;
 import com.certifytube.backend.model.SessionEvent;
 import com.certifytube.backend.repository.SessionEventRepository;
+import com.certifytube.backend.repository.SessionRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -20,13 +22,13 @@ import java.util.*;
 public class FeatureEngineeringServiceImpl implements FeatureEngineeringService {
 
     private final SessionEventRepository eventRepository;
+    private final SessionRepository sessionRepository;
 
     private final ObjectMapper mapper = new ObjectMapper();
     private volatile List<String> contractKeys;
 
     private static final double EPS = 1e-6;
-    private static final double LONG_PAUSE_THRESHOLD_SEC = 5.0;
-    private static final double MAX_CREDITED_INTERVAL_SEC = 15.0;
+    private static final double LONG_PAUSE_THRESHOLD_SEC = 10.0;
     private static final long MAX_CLIENT_SERVER_DRIFT_SEC = 120;
 
     private List<String> getContractKeys() {
@@ -54,40 +56,88 @@ public class FeatureEngineeringServiceImpl implements FeatureEngineeringService 
     }
 
     private void putIfExists(Map<String, Object> f, String key, double val) {
-        if (f.containsKey(key)) f.put(key, val);
+        if (f.containsKey(key)) f.put(key, sanitize(val));
+    }
+
+    private Map<String, Object> initFeatureMap() {
+        Map<String, Object> f = new LinkedHashMap<>();
+        for (String k : getContractKeys()) f.put(k, 0.0);
+        return f;
+    }
+
+    private double sanitize(double value) {
+        if (Double.isNaN(value) || Double.isInfinite(value)) return 0.0;
+        return value;
+    }
+
+    private double safeDivide(double numerator, double denominator) {
+        if (Math.abs(denominator) < EPS) return 0.0;
+        return sanitize(numerator / denominator);
+    }
+
+    private void sanitizeAllFeatures(Map<String, Object> features) {
+        for (Map.Entry<String, Object> entry : features.entrySet()) {
+            Object value = entry.getValue();
+            if (value instanceof Number n) {
+                entry.setValue(sanitize(n.doubleValue()));
+            } else {
+                try {
+                    entry.setValue(sanitize(Double.parseDouble(String.valueOf(value))));
+                } catch (Exception ignored) {
+                    entry.setValue(0.0);
+                }
+            }
+        }
+    }
+
+    private double resolveVideoDurationFromSession(String sessionId) {
+        Optional<Session> sessionOpt = sessionRepository.findById(sessionId);
+        if (sessionOpt.isEmpty() || sessionOpt.get().getVideoDurationSec() == null) {
+            return 0.0;
+        }
+        return Math.max(sessionOpt.get().getVideoDurationSec(), 0.0);
+    }
+
+    private double resolveVideoDuration(List<SessionEvent> events, String sessionId) {
+        double fromEvents = events.stream()
+                .map(SessionEvent::getVideoDurationSec)
+                .filter(Objects::nonNull)
+                .mapToDouble(Double::doubleValue)
+                .max()
+                .orElse(0.0);
+        if (fromEvents > 0.0) {
+            return fromEvents;
+        }
+        return resolveVideoDurationFromSession(sessionId);
     }
 
     @Override
     public Map<String, Object> computeFeaturesForSession(String sessionId) {
-
+        Map<String, Object> f = initFeatureMap();
         List<SessionEvent> events = eventRepository.findBySessionIdOrderByCreatedAtUtcAsc(sessionId);
         if (events == null || events.isEmpty()) {
-            throw new RuntimeException("No events found for session: " + sessionId);
+            putIfExists(f, "video_duration_sec", resolveVideoDurationFromSession(sessionId));
+            sanitizeAllFeatures(f);
+            return f;
         }
 
         TrustedTimeline trustedTimeline = buildTrustedTimeline(events);
         List<TrustedEvent> timelineEvents = trustedTimeline.events();
         if (timelineEvents.isEmpty()) {
-            throw new RuntimeException("No valid timeline events found for session: " + sessionId);
+            putIfExists(f, "video_duration_sec", resolveVideoDuration(events, sessionId));
+            sanitizeAllFeatures(f);
+            return f;
         }
 
-        Map<String, Object> f = new LinkedHashMap<>();
-        for (String k : getContractKeys()) f.put(k, 0.0);
-
-        long numPlay = events.stream().filter(e -> "play".equalsIgnoreCase(e.getEventType())).count();
         long numPause = events.stream().filter(e -> "pause".equalsIgnoreCase(e.getEventType())).count();
-        long numSeekRaw = events.stream().filter(e -> "seek".equalsIgnoreCase(e.getEventType())).count();
         long numRateChange = events.stream().filter(e -> "ratechange".equalsIgnoreCase(e.getEventType())).count();
         long numBuffer = events.stream().filter(e -> "buffering".equalsIgnoreCase(e.getEventType())).count();
-        boolean completed = events.stream().anyMatch(e -> "ended".equalsIgnoreCase(e.getEventType()));
 
         LocalDateTime start = timelineEvents.get(0).effectiveTs();
         LocalDateTime end = timelineEvents.get(timelineEvents.size() - 1).effectiveTs();
         double sessionDurationSec = Math.max(Duration.between(start, end).toMillis() / 1000.0, 0.0);
 
-        double videoDurationSec = events.stream()
-                .map(SessionEvent::getVideoDurationSec).filter(Objects::nonNull)
-                .mapToDouble(Double::doubleValue).max().orElse(0.0);
+        double videoDurationSec = resolveVideoDuration(events, sessionId);
 
         double lastPositionSec = 0.0;
         for (TrustedEvent te : timelineEvents) {
@@ -95,14 +145,13 @@ public class FeatureEngineeringServiceImpl implements FeatureEngineeringService 
             if (p != null) lastPositionSec = p;
         }
 
-        if (videoDurationSec <= 0) videoDurationSec = Math.max(lastPositionSec, 1.0);
-
         double watchTimeSec = 0.0;
         double totalPauseDurationSec = 0.0;
         double bufferingTimeSec = 0.0;
 
         double timeLt1x = 0.0, time1x = 0.0, timeGt1x = 0.0;
         double weightedRateSum = 0.0;
+        List<Double> playbackRateSamples = new ArrayList<>();
 
         int numSeekForward = 0;
         int numSeekBackward = 0;
@@ -110,18 +159,16 @@ public class FeatureEngineeringServiceImpl implements FeatureEngineeringService 
         double totalSeekBackwardSec = 0.0;
         double largestForwardSeekSec = 0.0;
         double largestBackwardSeekSec = 0.0;
-        List<Double> seekDeltas = new ArrayList<>();
-        Double firstSeekTimeSec = null;
+        List<Double> seekDistances = new ArrayList<>();
+        Double firstSeekTimeSec = null; // elapsed seconds from session start
+        Boolean firstSeekForward = null;
 
         List<Double> pauseDurations = new ArrayList<>();
-        int longPauseCount = 0;
-        double longPauseTimeSec = 0.0;
 
         LocalDateTime lastTs = null;
         Integer lastState = null; // 1=playing,2=paused,3=buffering
         double lastRate = 1.0;
         double lastPos = 0.0;
-        int clampedIntervalCount = 0;
 
         for (TrustedEvent te : timelineEvents) {
             SessionEvent row = te.row();
@@ -130,13 +177,15 @@ public class FeatureEngineeringServiceImpl implements FeatureEngineeringService 
             Double curRateObj = row.getPlaybackRate();
             Double curPosObj = row.getCurrentTimeSec();
 
+            if (curRateObj != null) {
+                playbackRateSamples.add(curRateObj);
+            }
+
             double curRate = (curRateObj != null ? curRateObj : lastRate);
             double curPos = (curPosObj != null ? curPosObj : lastPos);
 
             if (lastTs != null) {
-                double rawDt = Math.max(Duration.between(lastTs, curTs).toMillis() / 1000.0, 0.0);
-                double dt = Math.min(rawDt, MAX_CREDITED_INTERVAL_SEC);
-                if (rawDt > MAX_CREDITED_INTERVAL_SEC) clampedIntervalCount += 1;
+                double dt = Math.max(Duration.between(lastTs, curTs).toMillis() / 1000.0, 0.0);
 
                 if (lastState != null && lastState == 1) {
                     watchTimeSec += dt;
@@ -149,10 +198,6 @@ public class FeatureEngineeringServiceImpl implements FeatureEngineeringService 
                 } else if (lastState != null && lastState == 2) {
                     totalPauseDurationSec += dt;
                     pauseDurations.add(dt);
-                    if (dt >= LONG_PAUSE_THRESHOLD_SEC) {
-                        longPauseCount += 1;
-                        longPauseTimeSec += dt;
-                    }
 
                 } else if (lastState != null && lastState == 3) {
                     bufferingTimeSec += dt;
@@ -171,17 +216,23 @@ public class FeatureEngineeringServiceImpl implements FeatureEngineeringService 
                 if (from != null && to != null) delta = to - from;
                 else delta = curPos - lastPos;
 
-                if (delta > 1.0) {
+                if (delta > 0.0) {
+                    if (firstSeekForward == null) {
+                        firstSeekForward = true;
+                    }
                     numSeekForward += 1;
                     totalSeekForwardSec += delta;
                     largestForwardSeekSec = Math.max(largestForwardSeekSec, delta);
-                    seekDeltas.add(delta);
-                } else if (delta < -1.0) {
+                    seekDistances.add(Math.abs(delta));
+                } else if (delta < 0.0) {
+                    if (firstSeekForward == null) {
+                        firstSeekForward = false;
+                    }
                     double d = Math.abs(delta);
                     numSeekBackward += 1;
                     totalSeekBackwardSec += d;
                     largestBackwardSeekSec = Math.max(largestBackwardSeekSec, d);
-                    seekDeltas.add(delta);
+                    seekDistances.add(d);
                 }
             }
 
@@ -191,14 +242,13 @@ public class FeatureEngineeringServiceImpl implements FeatureEngineeringService 
             lastPos = curPos;
         }
 
-        watchTimeSec = Math.min(watchTimeSec, videoDurationSec);
-        double videoMin = Math.max(videoDurationSec / 60.0, EPS);
-
-        double watchTimeRatio = Math.min(watchTimeSec / videoDurationSec, 1.0);
-        double completionRatio = Math.min(lastPositionSec / videoDurationSec, 1.0);
-        double engagementVelocity = watchTimeSec / (sessionDurationSec + EPS);
-
-        double pauseFreqPerMin = numPause / videoMin;
+        int longPauseCount = (int) pauseDurations.stream().filter(d -> d > LONG_PAUSE_THRESHOLD_SEC).count();
+        int totalSeeks = numSeekForward + numSeekBackward;
+        double completedFlag = (videoDurationSec > 0.0 && lastPositionSec >= 0.95 * videoDurationSec) ? 1.0 : 0.0;
+        double watchTimeRatio = safeDivide(watchTimeSec, sessionDurationSec);
+        double completionRatio = safeDivide(lastPositionSec, videoDurationSec);
+        double engagementVelocity = safeDivide(watchTimeSec, sessionDurationSec);
+        double pauseFreqPerMin = safeDivide(numPause * 60.0, sessionDurationSec);
         double avgPauseDuration = (numPause > 0 ? totalPauseDurationSec / numPause : 0.0);
 
         double medianPause = 0.0;
@@ -210,55 +260,64 @@ public class FeatureEngineeringServiceImpl implements FeatureEngineeringService 
                     ? (sorted.get(mid - 1) + sorted.get(mid)) / 2.0
                     : sorted.get(mid);
         }
-        double longPauseRatio = (totalPauseDurationSec > 0 ? longPauseTimeSec / (totalPauseDurationSec + EPS) : 0.0);
+        double longPauseRatio = safeDivide(longPauseCount, numPause);
 
-        double skipTimeRatio = totalSeekForwardSec / (videoDurationSec + EPS);
-        double rewatchTimeRatio = totalSeekBackwardSec / (videoDurationSec + EPS);
-        double rewatchToSkipRatio = (rewatchTimeRatio + EPS) / (skipTimeRatio + EPS);
-
-        int totalSeeks = numSeekForward + numSeekBackward;
-        double seekDensityPerMin = totalSeeks / videoMin;
+        double skipTimeRatio = safeDivide(totalSeekForwardSec, videoDurationSec);
+        double rewatchTimeRatio = safeDivide(totalSeekBackwardSec, videoDurationSec);
+        double rewatchToSkipRatio = totalSeekForwardSec > 0.0
+                ? safeDivide(totalSeekBackwardSec, totalSeekForwardSec)
+                : 0.0;
+        double seekDensityPerMin = safeDivide(totalSeeks * 60.0, watchTimeSec);
 
         double avgSeekForward = (numSeekForward > 0 ? totalSeekForwardSec / numSeekForward : 0.0);
         double avgSeekBackward = (numSeekBackward > 0 ? totalSeekBackwardSec / numSeekBackward : 0.0);
 
-        double seekForwardRatio = (totalSeeks > 0 ? (double) numSeekForward / (totalSeeks + EPS) : 0.0);
-        double seekBackwardRatio = (totalSeeks > 0 ? (double) numSeekBackward / (totalSeeks + EPS) : 0.0);
+        double seekForwardRatio = safeDivide(numSeekForward, totalSeeks);
+        double seekBackwardRatio = safeDivide(numSeekBackward, totalSeeks);
 
         double seekJumpStd = 0.0;
-        if (seekDeltas.size() >= 2) {
-            double mean = seekDeltas.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+        if (seekDistances.size() >= 2) {
+            double mean = seekDistances.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
             double sum = 0.0;
-            for (double v : seekDeltas) sum += (v - mean) * (v - mean);
-            seekJumpStd = Math.sqrt(sum / seekDeltas.size());
+            for (double v : seekDistances) sum += (v - mean) * (v - mean);
+            seekJumpStd = Math.sqrt(sum / seekDistances.size());
         }
 
-        double fastRatio = timeGt1x / (videoDurationSec + EPS);
-        double slowRatio = timeLt1x / (videoDurationSec + EPS);
-        double playbackSpeedVariance = fastRatio + slowRatio;
-        double avgPlaybackRateWhenPlaying = (watchTimeSec > 0 ? weightedRateSum / (watchTimeSec + EPS) : 1.0);
+        double fastRatio = safeDivide(timeGt1x, watchTimeSec);
+        double slowRatio = safeDivide(timeLt1x, watchTimeSec);
+        double avgPlaybackRateWhenPlaying = safeDivide(weightedRateSum, watchTimeSec);
 
         Set<Double> speedSet = new HashSet<>();
-        for (SessionEvent e : events) {
-            if (e.getPlaybackRate() != null) speedSet.add(e.getPlaybackRate());
+        for (Double rate : playbackRateSamples) {
+            speedSet.add(rate);
         }
-        double uniqueSpeedLevels = Math.max(speedSet.size(), 1);
+        double uniqueSpeedLevels = speedSet.size();
 
-        double bufferingFreqPerMin = numBuffer / videoMin;
-        double playPauseRatio = numPlay / (numPause + EPS);
-        double firstSeekTime = (firstSeekTimeSec != null ? firstSeekTimeSec : -1.0);
-        int earlySkipFlag = (totalSeekForwardSec > 0 && lastPositionSec < 0.1 * videoDurationSec) ? 1 : 0;
-        double attentionIndex = watchTimeRatio - skipTimeRatio + rewatchTimeRatio;
-        int skimFlag = (fastRatio >= 0.2 && skipTimeRatio >= 0.2) ? 1 : 0;
-        int deepFlag = (rewatchTimeRatio >= 0.05 || longPauseCount >= 1) ? 1 : 0;
-        int timelineSuspiciousFlag = (trustedTimeline.nonMonotonicClientCount() > 0
-                || trustedTimeline.driftViolationCount() > 0
-                || clampedIntervalCount > 0) ? 1 : 0;
+        double playbackSpeedVariance = 0.0;
+        if (playbackRateSamples.size() >= 2) {
+            double mean = playbackRateSamples.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+            double sum = 0.0;
+            for (double sample : playbackRateSamples) {
+                double diff = sample - mean;
+                sum += diff * diff;
+            }
+            playbackSpeedVariance = safeDivide(sum, playbackRateSamples.size());
+        }
+
+        double bufferingFreqPerMin = safeDivide(numBuffer * 60.0, sessionDurationSec);
+        double playPauseRatio = safeDivide(watchTimeSec, totalPauseDurationSec);
+        double firstSeekTime = (firstSeekTimeSec != null ? firstSeekTimeSec : 0.0);
+        int earlySkipFlag = (Boolean.TRUE.equals(firstSeekForward)
+                && videoDurationSec > 0.0
+                && firstSeekTime <= 0.1 * videoDurationSec) ? 1 : 0;
+        double attentionIndex = watchTimeRatio * (1.0 - skipTimeRatio);
+        int skimFlag = skipTimeRatio > 0.3 ? 1 : 0;
+        int deepFlag = rewatchTimeRatio > 0.05 ? 1 : 0;
 
         putIfExists(f, "session_duration_sec", sessionDurationSec);
         putIfExists(f, "video_duration_sec", videoDurationSec);
         putIfExists(f, "last_position_sec", lastPositionSec);
-        putIfExists(f, "completed_flag", completed ? 1.0 : 0.0);
+        putIfExists(f, "completed_flag", completedFlag);
 
         putIfExists(f, "watch_time_sec", watchTimeSec);
         putIfExists(f, "watch_time_ratio", watchTimeRatio);
@@ -273,7 +332,7 @@ public class FeatureEngineeringServiceImpl implements FeatureEngineeringService 
         putIfExists(f, "long_pause_count", (double) longPauseCount);
         putIfExists(f, "long_pause_ratio", longPauseRatio);
 
-        putIfExists(f, "num_seek", (double) numSeekRaw);
+        putIfExists(f, "num_seek", (double) totalSeeks);
         putIfExists(f, "num_seek_forward", (double) numSeekForward);
         putIfExists(f, "num_seek_backward", (double) numSeekBackward);
         putIfExists(f, "total_seek_forward_sec", totalSeekForwardSec);
@@ -310,12 +369,8 @@ public class FeatureEngineeringServiceImpl implements FeatureEngineeringService 
         putIfExists(f, "attention_index", attentionIndex);
         putIfExists(f, "skim_flag", skimFlag);
         putIfExists(f, "deep_flag", deepFlag);
-        putIfExists(f, "timeline_suspicious_flag", timelineSuspiciousFlag);
-        putIfExists(f, "timeline_non_monotonic_count", trustedTimeline.nonMonotonicClientCount());
-        putIfExists(f, "timeline_drift_violation_count", trustedTimeline.driftViolationCount());
-        putIfExists(f, "timeline_fallback_to_server_count", trustedTimeline.fallbackToServerCount());
-        putIfExists(f, "timeline_clamped_interval_count", clampedIntervalCount);
 
+        sanitizeAllFeatures(f);
         return f;
     }
 

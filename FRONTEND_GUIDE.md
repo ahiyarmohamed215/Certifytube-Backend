@@ -1,4 +1,4 @@
-# CertifyTube â€” Frontend Integration Guide
+﻿# CertifyTube Ã¢â‚¬â€ Frontend Integration Guide
 
 > Base URL: `http://localhost:8080`  
 > Auth: `Authorization: Bearer <JWT>`
@@ -97,7 +97,7 @@ After login, call the dashboard endpoint to populate the home page. Use the `sta
 ### Get Dashboard (all statuses)
 ```
 GET /api/dashboard
-â†’ {
+Ã¢â€ â€™ {
     "activeVideos": [...],
     "completedVideos": [...],
     "quizPendingVideos": [...],
@@ -108,10 +108,10 @@ GET /api/dashboard
 ### Filtered by Status
 ```
 GET /api/dashboard?status=ACTIVE
-â†’ Only "Continue Watching" videos
+Ã¢â€ â€™ Only "Continue Watching" videos
 
 GET /api/dashboard?status=COMPLETED,QUIZ_PENDING,CERTIFIED
-â†’ My Learnings / History page
+Ã¢â€ â€™ My Learnings / History page
 ```
 
 **Each video item:**
@@ -136,14 +136,14 @@ GET /api/dashboard?status=COMPLETED,QUIZ_PENDING,CERTIFIED
 
 | Status | Meaning | Frontend Action |
 |--------|---------|-----------------|
-| `ACTIVE` | Watching in progress | Show "Continue Watching" â†’ click resumes session |
+| `ACTIVE` | Watching in progress | Show "Continue Watching" Ã¢â€ â€™ click resumes session |
 | `COMPLETED` | Session ended, pending analysis | Show "Analyze Engagement" (STEM only) |
-| `QUIZ_PENDING` | Engagement passed (â‰¥ 0.85) | Show "Take Quiz" |
+| `QUIZ_PENDING` | Engagement passed (Ã¢â€°Â¥ 0.85) | Show "Take Quiz" |
 | `CERTIFIED` | Quiz passed, certificate issued | Show "View Certificate" |
 
 **Frontend page mapping:**
-- **Home page:** `GET /api/dashboard?status=ACTIVE` â†’ "Continue Watching" section
-- **My Learnings:** `GET /api/dashboard?status=COMPLETED,QUIZ_PENDING,CERTIFIED` â†’ History / progress
+- **Home page:** `GET /api/dashboard?status=ACTIVE` Ã¢â€ â€™ "Continue Watching" section
+- **My Learnings:** `GET /api/dashboard?status=COMPLETED,QUIZ_PENDING,CERTIFIED` Ã¢â€ â€™ History / progress
 
 ---
 
@@ -151,7 +151,7 @@ GET /api/dashboard?status=COMPLETED,QUIZ_PENDING,CERTIFIED
 
 ```
 GET /api/youtube/search?q=spring%20boot&limit=20
-â†’ { "query": "...", "count": 20, "videos": [{ "videoId": "...", "title": "...", "iframeUrl": "..." }] }
+Ã¢â€ â€™ { "query": "...", "count": 20, "videos": [{ "videoId": "...", "title": "...", "iframeUrl": "..." }] }
 ```
 
 ---
@@ -162,7 +162,7 @@ GET /api/youtube/search?q=spring%20boot&limit=20
 ```
 POST /api/sessions/start
 Body: { "videoId": "abc123", "videoTitle": "Video title" }
-â†’ {
+Ã¢â€ â€™ {
     "sessionId": "uuid",
     "resumed": false,
     "lastPositionSec": null,
@@ -173,10 +173,10 @@ Body: { "videoId": "abc123", "videoTitle": "Video title" }
 ```
 
 **New fields explained:**
-- `resumed` â€” `true` if an existing open session was found (user returning to same video)
-- `lastPositionSec` â€” if resumed, seek the video player to this position
-- `stemEligible` â€” `true` if video qualifies for certification (STEM content)
-- `stemMessage` â€” if not STEM, show this message to the user:
+- `resumed` Ã¢â‚¬â€ `true` if an existing open session was found (user returning to same video)
+- `lastPositionSec` Ã¢â‚¬â€ if resumed, seek the video player to this position
+- `stemEligible` Ã¢â‚¬â€ `true` if video qualifies for certification (STEM content)
+- `stemMessage` Ã¢â‚¬â€ if not STEM, show this message to the user:
   > *"Only STEM-based skill videos (How-to, Science, Technology, Education) are eligible for engagement analysis, quiz, and certification. You can still watch this video but no certificate will be issued."*
 
 **Frontend behavior:**
@@ -202,11 +202,11 @@ Body: [
     "seekToSec": null             // only for seek events
   }
 ]
-â†’ { "saved": 18, "rejected": 2, "errors": [...] }
+Ã¢â€ â€™ { "saved": 18, "rejected": 2, "errors": [...] }
 ```
 
 **Important:**
-- Do NOT send `userId` â€” derived from JWT
+- Do NOT send `userId` Ã¢â‚¬â€ derived from JWT
 - Use `performance.now()` for `clientEventMs` (NOT `Date.now()`)
 - Send `videoDurationSec` in at least the first and last checkpoint
 - When video ends naturally, send an event with `eventType: "ended"`
@@ -215,24 +215,24 @@ Body: [
 ### Step 3: End Session
 ```
 POST /api/sessions/end?sessionId=<sessionId>
-â†’ { "ended": true }
+Ã¢â€ â€™ { "ended": true }
 ```
 **Call this AFTER flushing the final event batch.** The session must be ended before analysis.
 
 ### Delete Session 
 ```
 DELETE /api/sessions/<sessionId>
-â†’ { "message": "Session deleted successfully" }
+Ã¢â€ â€™ { "message": "Session deleted successfully" }
 ```
 Learners can delete their own sessions to remove them from history or "Continue Watching". This cascades to delete any related engagement results or quizzes.
 
 ### Step 4: Analyze Engagement (STEM only)
 
-> **âš ï¸ Non-STEM videos cannot be analyzed.** Backend returns an error if attempted.
+> **Ã¢Å¡Â Ã¯Â¸Â Non-STEM videos cannot be analyzed.** Backend returns an error if attempted.
 
 ```
 POST /api/sessions/<sessionId>/analyze
-POST /api/sessions/<sessionId>/analyze?model=ebm    â† optional, default: xgboost
+POST /api/sessions/<sessionId>/analyze?model=ebm    Ã¢â€ Â optional, default: xgboost
 ```
 
 **Response:**
@@ -248,24 +248,24 @@ POST /api/sessions/<sessionId>/analyze?model=ebm    â† optional, default: x
 ```
 
 **Notes:**
-- `engagementScore` is 0.0â€“1.0 (probability)
+- `engagementScore` is 0.0Ã¢â‚¬â€œ1.0 (probability)
 - `status` is `"ENGAGED"` or `"NOT_ENGAGED"` (backend decides using threshold)
 - The `model` query param is optional. Default: `xgboost`
 - **Idempotency:** if called again within 60 seconds, returns the cached result (prevents double-clicks)
-- After analysis: if engaged â†’ session moves to `QUIZ_PENDING` status
+- After analysis: if engaged Ã¢â€ â€™ session moves to `QUIZ_PENDING` status
 
-**Frontend tip â€” disable the Analyze button** after the first click until the response comes back.
+**Frontend tip Ã¢â‚¬â€ disable the Analyze button** after the first click until the response comes back.
 
 ---
 
 ## 5. Quiz Flow
 
-> **âš ï¸ Non-STEM videos are not eligible for quiz.** `eligibility` will return `eligible: false`.
+> **Ã¢Å¡Â Ã¯Â¸Â Non-STEM videos are not eligible for quiz.** `eligibility` will return `eligible: false`.
 
 ### Check Eligibility
 ```
 GET /api/quiz/eligibility?sessionId=<sessionId>
-â†’ {
+Ã¢â€ â€™ {
     "sessionId": "uuid",
     "eligible": true,
     "reason": "Eligible",
@@ -283,7 +283,7 @@ GET /api/quiz/eligibility?sessionId=<sessionId>
 ```
 POST /api/quiz/generate
 Body: { "sessionId": "uuid", "difficulty": "medium" }
-â†’ {
+Ã¢â€ â€™ {
     "quizId": "uuid",
     "sessionId": "uuid",
     "videoId": "abc123",
@@ -297,11 +297,11 @@ Body: { "sessionId": "uuid", "difficulty": "medium" }
 ```
 
 **Optional fields:**
-- `numQuestions` (Integer) â€” override number of questions (1â€“20)
-- `includeCoding` (Boolean) â€” include coding questions
+- `numQuestions` (Integer) Ã¢â‚¬â€ override number of questions (1Ã¢â‚¬â€œ20)
+- `includeCoding` (Boolean) Ã¢â‚¬â€ include coding questions
 
 **Notes:**
-- Backend auto-fetches transcript from YouTube (via ML server) â€” no need to send transcript
+- Backend auto-fetches transcript from YouTube (via ML server) Ã¢â‚¬â€ no need to send transcript
 - **Idempotency:** if called again within 60 seconds, returns the existing quiz
 - **Disable the Generate button** after click to prevent duplicate calls
 - `generate/get` does not include `correctAnswer` or `explanation`.
@@ -310,7 +310,7 @@ Body: { "sessionId": "uuid", "difficulty": "medium" }
 ```
 POST /api/quiz/<quizId>/submit
 Body: { "answers": { "q1": "A", "q2": "true", "q3": "fill_value" } }
-â†’ {
+Ã¢â€ â€™ {
     "quizId": "uuid",
     "correctCount": 8,
     "totalCount": 10,
@@ -338,8 +338,8 @@ After 2 failed attempts in the current engagement window, learner must rewatch +
 
 ### Get Quiz / Result
 ```
-GET /api/quiz/<quizId>          â†’ same shape as generate
-GET /api/quiz/<quizId>/result   â†’ same shape as submit
+GET /api/quiz/<quizId>          Ã¢â€ â€™ same shape as generate
+GET /api/quiz/<quizId>/result   Ã¢â€ â€™ same shape as submit
 ```
 
 ---
@@ -349,7 +349,7 @@ GET /api/quiz/<quizId>/result   â†’ same shape as submit
 ### Get Certificate (owner only)
 ```
 GET /api/certificates/<certificateId>
-â†’ {
+Ã¢â€ â€™ {
     "certificateId": "uuid",
     "certificateNumber": "CT-1741234567890-1",
     "sessionId": "uuid",
@@ -386,7 +386,7 @@ GET /api/certificates/<certificateId>
 ### Download PDF
 ```
 GET /api/certificates/<certificateId>/pdf
-â†’ application/pdf binary
+Ã¢â€ â€™ application/pdf binary
 ```
 Open in new tab or trigger download:
 ```js
@@ -398,14 +398,14 @@ window.open(URL.createObjectURL(blob));
 ### Delete Certificate (owner only)
 ```
 DELETE /api/certificates/<certificateId>
-â†’ { "message": "Certificate deleted successfully" }
+Ã¢â€ â€™ { "message": "Certificate deleted successfully" }
 ```
 Use a confirmation dialog before delete. On success, remove certificate from UI and navigate away from certificate detail page if open.
 
-### Public Verify (anyone â€” NO auth required)
+### Public Verify (anyone Ã¢â‚¬â€ NO auth required)
 ```
 GET /api/certificates/verify/<verificationToken>
-â†’ Same shape as above, but userId is null (privacy)
+Ã¢â€ â€™ Same shape as above, but userId is null (privacy)
 ```
 
 **Frontend verification page (`/verify/:token`):**
@@ -414,13 +414,13 @@ The verification page is public and should display:
 
 | Field | Display |
 |-------|---------|
-| `valid` | Show **âœ… Valid Certificate** or **âŒ Revoked Certificate** banner |
+| `valid` | Show **Ã¢Å“â€¦ Valid Certificate** or **Ã¢ÂÅ’ Revoked Certificate** banner |
 | `status` | Badge: green "ACTIVE" or red "REVOKED" |
 | `learnerName` | Learner's name |
 | `videoTitle` | Course / video title |
 | `videoDuration` | Duration of the video watched |
-| `engagementScore` | Show as percentage (Ã— 100): e.g. `92%` |
-| `quizScore` | Show as percentage (Ã— 100): e.g. `85%` |
+| `engagementScore` | Show as percentage (Ãƒâ€” 100): e.g. `92%` |
+| `quizScore` | Show as percentage (Ãƒâ€” 100): e.g. `85%` |
 | `engagementThreshold` | Show as percentage: e.g. `Required: 85%` |
 | `quizThreshold` | Show as percentage: e.g. `Required: 80%` |
 | `certificateNumber` | Certificate number |
@@ -440,9 +440,9 @@ The verification page is public and should display:
 
 The certificate detail page should display:
 - All fields from the response above
-- **Download PDF** button â†’ `GET /api/certificates/{id}/pdf`
-- **Share** button â†’ copy `verificationLink` to clipboard
-- **QR Code** â†’ generate from `verificationLink` using a JS QR library (e.g. `qrcode.react`)
+- **Download PDF** button Ã¢â€ â€™ `GET /api/certificates/{id}/pdf`
+- **Share** button Ã¢â€ â€™ copy `verificationLink` to clipboard
+- **QR Code** Ã¢â€ â€™ generate from `verificationLink` using a JS QR library (e.g. `qrcode.react`)
 
 ---
 
@@ -452,44 +452,36 @@ All endpoints require `ROLE_ADMIN`. Any non-admin user gets `403`.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/admin/stats` | System counts |
-| GET | `/api/admin/users` | List all users |
-| GET | `/api/admin/users/{id}` | Get user |
-| PUT | `/api/admin/users/{id}/role` | Change role: `{"role":"ADMIN"}` |
-| DELETE | `/api/admin/users/{id}` | Delete user |
-| GET | `/api/admin/sessions` | List sessions |
-| DELETE | `/api/admin/sessions/{id}` | Delete session |
-| GET | `/api/admin/certificates` | List certificates |
+| GET | `/api/admin/learners` | List learners with summary counts |
+| GET | `/api/admin/learners/{learnerId}/profile?searchLimit=30` | Deep profile (sessions, engagement, quizzes, certificates, search cache) |
 | DELETE | `/api/admin/certificates/{id}` | Delete certificate |
-| **POST** | **`/api/admin/certificates/{id}/revoke`** | **Revoke certificate** |
-| GET | `/api/admin/quizzes` | List quizzes |
-| DELETE | `/api/admin/quizzes/{id}` | Delete quiz |
+| POST | `/api/admin/certificates/{id}/revoke` | Revoke certificate |
+| POST | `/api/admin/certificates/{id}/activate` | Reactivate revoked certificate |
 
-### Revoke Certificate (NEW)
+### Certificate Status Actions
 ```
 POST /api/admin/certificates/<certificateId>/revoke
-â†’ { "message": "Certificate revoked successfully", "certificateId": "...", "status": "REVOKED" }
+-> { "message": "Certificate revoked successfully", "certificateId": "...", "status": "REVOKED" }
+
+POST /api/admin/certificates/<certificateId>/activate
+-> { "message": "Certificate activated successfully", "certificateId": "...", "status": "ACTIVE" }
 ```
-- Sets certificate status to `REVOKED`
-- The certificate still exists but `valid` becomes `false` on verification
-- If already revoked, returns `400` with `"Certificate is already revoked"`
-- **Frontend:** Add a "Revoke" button in the admin certificates table with a confirmation dialog
 
 ---
 
 ## 8. Recommended Page Structure
 
 ```
-/                    â†’ Search page (public)
-/login               â†’ Login form
-/signup              â†’ Signup form
-/home                â†’ Dashboard (Continue Watching + My Learnings)
-/watch/:videoId      â†’ Video player + event tracking
-/analyze/:sessionId  â†’ Engagement results
-/quiz/:quizId        â†’ Quiz UI
-/result/:quizId      â†’ Quiz result + certificate download
-/verify/:token       â†’ Public certificate verification
-/admin               â†’ Admin dashboard (ADMIN only)
+/                    Ã¢â€ â€™ Search page (public)
+/login               Ã¢â€ â€™ Login form
+/signup              Ã¢â€ â€™ Signup form
+/home                Ã¢â€ â€™ Dashboard (Continue Watching + My Learnings)
+/watch/:videoId      Ã¢â€ â€™ Video player + event tracking
+/analyze/:sessionId  Ã¢â€ â€™ Engagement results
+/quiz/:quizId        Ã¢â€ â€™ Quiz UI
+/result/:quizId      Ã¢â€ â€™ Quiz result + certificate download
+/verify/:token       Ã¢â€ â€™ Public certificate verification
+/admin               Ã¢â€ â€™ Admin dashboard (ADMIN only)
 ```
 
 ---
@@ -497,25 +489,25 @@ POST /api/admin/certificates/<certificateId>/revoke
 ## 9. Complete User Flow (Sequence)
 
 ```
-1. User signs up or logs in              â†’ store JWT
-2. Home page loads                       â†’ GET /api/dashboard?status=ACTIVE (Continue Watching)
-3. User searches for a video             â†’ GET /api/youtube/search
-4. User clicks a video                   â†’ POST /api/sessions/start
+1. User signs up or logs in              Ã¢â€ â€™ store JWT
+2. Home page loads                       Ã¢â€ â€™ GET /api/dashboard?status=ACTIVE (Continue Watching)
+3. User searches for a video             Ã¢â€ â€™ GET /api/youtube/search
+4. User clicks a video                   Ã¢â€ â€™ POST /api/sessions/start
    - If resumed: seek to lastPositionSec
    - If !stemEligible: show warning banner
-5. Video plays, events stream            â†’ POST /api/events/batch (every 5-10s)
-6. Video ends or user navigates away     â†’ flush events, POST /api/sessions/end
-7. User clicks "Analyze" (STEM only)     â†’ POST /api/sessions/{id}/analyze
-8. Show engagement results               â†’ display score, status, explanation
-9. If ENGAGED â†’ show "Take Quiz"         â†’ GET /api/quiz/eligibility
-10. User generates quiz                  â†’ POST /api/quiz/generate
-11. User answers questions               â†’ POST /api/quiz/{id}/submit
-12. If passed â†’ show certificate         â†’ GET /api/certificates/{id}/pdf
-13. Share verification link              â†’ GET /api/certificates/verify/{token}
+5. Video plays, events stream            Ã¢â€ â€™ POST /api/events/batch (every 5-10s)
+6. Video ends or user navigates away     Ã¢â€ â€™ flush events, POST /api/sessions/end
+7. User clicks "Analyze" (STEM only)     Ã¢â€ â€™ POST /api/sessions/{id}/analyze
+8. Show engagement results               Ã¢â€ â€™ display score, status, explanation
+9. If ENGAGED Ã¢â€ â€™ show "Take Quiz"         Ã¢â€ â€™ GET /api/quiz/eligibility
+10. User generates quiz                  Ã¢â€ â€™ POST /api/quiz/generate
+11. User answers questions               Ã¢â€ â€™ POST /api/quiz/{id}/submit
+12. If passed Ã¢â€ â€™ show certificate         Ã¢â€ â€™ GET /api/certificates/{id}/pdf
+13. Share verification link              Ã¢â€ â€™ GET /api/certificates/verify/{token}
 
 My Learnings page:
-14. Load history                         â†’ GET /api/dashboard?status=COMPLETED,QUIZ_PENDING,CERTIFIED
-15. Click pending video                  â†’ resume session or take next action
+14. Load history                         Ã¢â€ â€™ GET /api/dashboard?status=COMPLETED,QUIZ_PENDING,CERTIFIED
+15. Click pending video                  Ã¢â€ â€™ resume session or take next action
 ```
 
 ---
@@ -525,7 +517,7 @@ My Learnings page:
 | Status | Meaning | Frontend Action |
 |--------|---------|-----------------| 
 | `400` | Validation error | Show error message |
-| `401` | Not authenticated | Clear token â†’ redirect to login |
+| `401` | Not authenticated | Clear token Ã¢â€ â€™ redirect to login |
 | `403` | Forbidden (wrong role/ownership) | Show "Access denied" |
 | `500` | Server error | Show generic error |
 
@@ -542,12 +534,13 @@ Because many YouTube creators miscategorize their coding and tech tutorials unde
 If a video contains STEM keywords (e.g., *oop, python, machine learning, calculus, developer, docker*), it will be flagged as `stemEligible = true` regardless of its official YouTube category.
 
 For non-STEM videos:
-- âŒ No engagement analysis
-- âŒ No quiz generation
-- âŒ No certificate
-- âœ… User can still watch the video
+- Ã¢ÂÅ’ No engagement analysis
+- Ã¢ÂÅ’ No quiz generation
+- Ã¢ÂÅ’ No certificate
+- Ã¢Å“â€¦ User can still watch the video
 
 The `stemEligible` flag is returned in:
-- `POST /api/sessions/start` â†’ `stemEligible` + `stemMessage`
-- `GET /api/quiz/eligibility` â†’ `stemEligible`
-- `GET /api/dashboard` â†’ each video item has `stemEligible`
+- `POST /api/sessions/start` Ã¢â€ â€™ `stemEligible` + `stemMessage`
+- `GET /api/quiz/eligibility` Ã¢â€ â€™ `stemEligible`
+- `GET /api/dashboard` Ã¢â€ â€™ each video item has `stemEligible`
+

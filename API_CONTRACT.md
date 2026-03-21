@@ -1,4 +1,4 @@
-# Frontend Integration Contract
+﻿# Frontend Integration Contract
 
 **Base**
 - Base URL: `http://localhost:8080`
@@ -88,19 +88,7 @@ Response:
 {"query":"spring boot","count":20,"videos":[{"videoId":"...","title":"...","iframeUrl":"https://www.youtube.com/embed/..."}]}
 ```
 
-4. `GET /api/youtube/transcript?videoId={videoId}`  
-Response:
-```json
-{
-  "videoId":"dQw4w9WgXcQ",
-  "transcript":"cleaned transcript text ...",
-  "transcriptLength":3560,
-  "fromCache":false,
-  "cachedAtUtc":"2026-02-21T15:00:00Z"
-}
-```
-
-5. `GET /api/certificates/verify/{token}`  
+4. `GET /api/certificates/verify/{token}`  
 Response:
 ```json
 {"certificateId":"...","certificateNumber":"...","sessionId":"...","userId":1,"scorePercent":84.0,"verificationToken":"...","verificationLink":"...","createdAtUtc":"..."}
@@ -154,7 +142,7 @@ Notes:
 - Optional `status` query param (comma-separated): filter by session status.
 - If omitted, all statuses returned.
 - Statuses: `ACTIVE`, `COMPLETED`, `QUIZ_PENDING`, `CERTIFIED`.
-- Frontend: Home page → `?status=ACTIVE`, My Learnings → `?status=COMPLETED,QUIZ_PENDING,CERTIFIED`.
+- Frontend: Home page â†’ `?status=ACTIVE`, My Learnings â†’ `?status=COMPLETED,QUIZ_PENDING,CERTIFIED`.
 
 4. `POST /api/sessions/start`  
 Request:
@@ -171,8 +159,6 @@ Notes:
 - `lastPositionSec`: if resumed, frontend should seek video to this position.
 - `stemEligible`: true if video is STEM (YouTube category 27 or 28). Non-STEM videos cannot be analyzed/quizzed/certified.
 - `stemMessage`: warning text for non-STEM videos.
-- Backward-compatible alias exists: `POST /start_session`.
-
 5. `POST /api/events/batch`  
 Request:
 ```json
@@ -235,7 +221,7 @@ Notes:
 - **Idempotent**: if called again within 60s, returns cached result.
 - Session must be ended before analyze.
 - `model` query param is optional. Default: `xgboost`. Valid: `xgboost`, `ebm`.
-- If ENGAGED → session status moves to `QUIZ_PENDING`.
+- If ENGAGED â†’ session status moves to `QUIZ_PENDING`.
 
 7. `GET /api/quiz/eligibility?sessionId={sessionId}`  
 Response:
@@ -277,7 +263,7 @@ Response:
 }
 ```
 Notes:
-- **No transcript needed** — ML server fetches/caches transcripts automatically.
+- **No transcript needed** â€” ML server fetches/caches transcripts automatically.
 - **Idempotent**: if called again within 60s, returns existing quiz.
 - `numQuestions` and `includeCoding` are optional.
 - **STEM only**: non-STEM videos return error.
@@ -364,7 +350,6 @@ Notes:
 
 ## Session End
 - Preferred: `POST /api/sessions/end?sessionId=<sessionId>`
-- Backward-compatible alias: `POST /end_session?sessionId=<sessionId>`
 - Response:
 ```json
 {"ended":true}
@@ -377,3 +362,4 @@ Notes:
 - JWT filter checks revoked `jti` on each protected request and rejects revoked tokens.
 - Backend cleanup job deletes expired revoked JTIs periodically (`auth.jwt.revoked-cleanup-ms`).
 - Frontend must still clear locally stored token after logout response.
+

@@ -1,13 +1,19 @@
 package com.certifytube.backend.client;
 
+import io.netty.channel.ChannelOption;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.netty.http.client.HttpClient;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -15,12 +21,19 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class MlServiceClient {
 
+        private static final int CONNECT_TIMEOUT_MS = 5000;
+        private static final Duration RESPONSE_TIMEOUT = Duration.ofSeconds(25);
+
         @Value("${ml.base-url}")
         private String mlBaseUrl;
 
         private WebClient client() {
+                HttpClient httpClient = HttpClient.create()
+                                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, CONNECT_TIMEOUT_MS)
+                                .responseTimeout(RESPONSE_TIMEOUT);
                 return WebClient.builder()
                                 .baseUrl(mlBaseUrl)
+                                .clientConnector(new ReactorClientHttpConnector(httpClient))
                                 .build();
         }
 
@@ -45,14 +58,38 @@ public class MlServiceClient {
                                 "feature_version", featureVersion,
                                 "features", features);
 
-                return client()
-                                .post()
-                                .uri("/engagement/analyze/" + model)
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .bodyValue(payload)
-                                .retrieve()
-                                .bodyToMono(Map.class)
-                                .block();
+                String endpoint = "/engagement/analyze/" + model;
+                log.info("Calling ML engagement endpoint {} (sessionId={}, features={})", endpoint, sessionId,
+                                features != null ? features.size() : 0);
+
+                try {
+                        return client()
+                                        .post()
+                                        .uri(endpoint)
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .bodyValue(payload)
+                                        .retrieve()
+                                        .bodyToMono(Map.class)
+                                        .block();
+                } catch (WebClientResponseException e) {
+                        log.error("ML engagement error {} from {}{}: {}",
+                                        e.getStatusCode().value(), mlBaseUrl, endpoint, e.getResponseBodyAsString());
+                        throw new IllegalStateException(
+                                        "ML service rejected engagement request (HTTP %d). Verify model endpoint and payload."
+                                                        .formatted(e.getStatusCode().value()),
+                                        e);
+                } catch (WebClientRequestException e) {
+                        log.error("ML engagement request failed to {}{}: {}", mlBaseUrl, endpoint, e.getMessage());
+                        throw new IllegalStateException(
+                                        "Cannot reach ML service at %s. Set ML_BASE_URL to a reachable ML API."
+                                                        .formatted(mlBaseUrl),
+                                        e);
+                } catch (RuntimeException e) {
+                        log.error("Unexpected ML engagement failure for {}{}: {}", mlBaseUrl, endpoint, e.getMessage());
+                        throw new IllegalStateException(
+                                        "ML engagement request timed out or failed unexpectedly. Check ML service health and ML_BASE_URL.",
+                                        e);
+                }
         }
 
         /**
@@ -92,9 +129,15 @@ public class MlServiceClient {
                                         .retrieve()
                                         .bodyToMono(Map.class)
                                         .block();
-                } catch (org.springframework.web.reactive.function.client.WebClientResponseException e) {
+                } catch (WebClientResponseException e) {
                         log.error("ML Service quiz generate error {}: {}", e.getStatusCode(), e.getResponseBodyAsString());
                         throw e;
+                } catch (WebClientRequestException e) {
+                        log.error("ML service quiz generate request failed: {}", e.getMessage());
+                        throw new IllegalStateException(
+                                        "Cannot reach ML service at %s. Set ML_BASE_URL to a reachable ML API."
+                                                        .formatted(mlBaseUrl),
+                                        e);
                 }
         }
 }

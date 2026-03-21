@@ -3,7 +3,6 @@ package com.certifytube.backend.service;
 import com.certifytube.backend.dto.AdminEngagementResponse;
 import com.certifytube.backend.dto.AdminLearnerProfileResponse;
 import com.certifytube.backend.dto.AdminUserSummaryDto;
-import com.certifytube.backend.dto.AdminUserUpdateRequest;
 import com.certifytube.backend.model.Certificate;
 import com.certifytube.backend.model.EngagementResult;
 import com.certifytube.backend.model.Quiz;
@@ -30,10 +29,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -51,16 +47,7 @@ public class AdminService {
     private final EngagementResultRepository engagementResultRepository;
     private final YouTubeSearchCacheRepository youTubeSearchCacheRepository;
     private final YouTubeSearchCacheItemRepository youTubeSearchCacheItemRepository;
-    private final AccountDeletionService accountDeletionService;
     private final ObjectMapper objectMapper = new ObjectMapper();
-
-    // Users
-
-    public List<AdminUserSummaryDto> getAllUsers() {
-        List<UserAccount> users = userAccountRepository.findAll();
-        users.sort(Comparator.comparing(UserAccount::getCreatedAtUtc, Comparator.nullsLast(Comparator.naturalOrder())).reversed());
-        return users.stream().map(this::toUserSummary).toList();
-    }
 
     public List<AdminUserSummaryDto> getLearners() {
         return userAccountRepository.findByRoleOrderByCreatedAtUtcDesc(Role.LEARNER)
@@ -68,71 +55,6 @@ public class AdminService {
                 .map(this::toUserSummary)
                 .toList();
     }
-
-    public AdminUserSummaryDto getUserById(Long id) {
-        return toUserSummary(requireUser(id));
-    }
-
-    @Transactional
-    public AdminUserSummaryDto updateUserRole(Long id, Role role) {
-        UserAccount user = requireUser(id);
-        user.setRole(role);
-        return toUserSummary(userAccountRepository.save(user));
-    }
-
-    @Transactional
-    public AdminUserSummaryDto updateUser(Long id, AdminUserUpdateRequest req) {
-        UserAccount user = requireUser(id);
-
-        if (req.getEmail() != null) {
-            String normalized = normalizeEmail(req.getEmail());
-            if (userAccountRepository.existsByEmailAndIdNot(normalized, id)) {
-                throw new IllegalArgumentException("Email already in use");
-            }
-            user.setEmail(normalized);
-        }
-
-        if (req.getName() != null) {
-            String name = req.getName().trim();
-            if (name.length() < 2 || name.length() > 255) {
-                throw new IllegalArgumentException("Name must be between 2 and 255 characters");
-            }
-            user.setName(name);
-        }
-
-        if (req.getRole() != null && !req.getRole().isBlank()) {
-            try {
-                user.setRole(Role.valueOf(req.getRole().trim().toUpperCase()));
-            } catch (IllegalArgumentException ex) {
-                throw new IllegalArgumentException("Invalid role: " + req.getRole() + ". Valid roles: ADMIN, LEARNER");
-            }
-        }
-
-        if (req.getActive() != null) {
-            user.setActive(req.getActive());
-        }
-
-        if (req.getEmailVerified() != null) {
-            user.setEmailVerified(req.getEmailVerified());
-            user.setEmailVerifiedAtUtc(Boolean.TRUE.equals(req.getEmailVerified()) ? LocalDateTime.now() : null);
-        }
-
-        return toUserSummary(userAccountRepository.save(user));
-    }
-
-    @Transactional
-    public AdminUserSummaryDto setUserActive(Long id, boolean active) {
-        UserAccount user = requireUser(id);
-        user.setActive(active);
-        return toUserSummary(userAccountRepository.save(user));
-    }
-
-    @Transactional
-    public void deleteUser(Long id) {
-        accountDeletionService.deleteUserAndOwnedData(id);
-    }
-
-    // Learner profile
 
     public AdminLearnerProfileResponse getLearnerProfile(Long learnerId, int searchLimit) {
         UserAccount learner = requireUser(learnerId);
@@ -189,67 +111,12 @@ public class AdminService {
         return out;
     }
 
-    // Sessions
-
-    public List<Session> getAllSessions() {
-        return sessionRepository.findAll();
-    }
-
-    @Transactional
-    public void deleteSession(String sessionId) {
-        if (!sessionRepository.existsById(sessionId)) {
-            throw new IllegalArgumentException("Session not found with id: " + sessionId);
-        }
-        sessionRepository.deleteById(sessionId);
-    }
-
-    // Certificates
-
-    public List<Certificate> getAllCertificates() {
-        return certificateRepository.findAll();
-    }
-
     @Transactional
     public void deleteCertificate(String certificateId) {
         if (!certificateRepository.existsById(certificateId)) {
             throw new IllegalArgumentException("Certificate not found with id: " + certificateId);
         }
         certificateRepository.deleteById(certificateId);
-    }
-
-    // Quizzes
-
-    public List<Quiz> getAllQuizzes() {
-        return quizRepository.findAll();
-    }
-
-    @Transactional
-    public void deleteQuiz(String quizId) {
-        if (!quizRepository.existsById(quizId)) {
-            throw new IllegalArgumentException("Quiz not found with id: " + quizId);
-        }
-        quizRepository.deleteById(quizId);
-    }
-
-    // Stats
-
-    public Map<String, Object> getStats() {
-        Map<String, Object> stats = new LinkedHashMap<>();
-        stats.put("totalUsers", userAccountRepository.count());
-        stats.put("totalSessions", sessionRepository.count());
-        stats.put("totalCertificates", certificateRepository.count());
-        stats.put("totalQuizzes", quizRepository.count());
-        return stats;
-    }
-
-    // Engagement results
-
-    public AdminEngagementResponse getEngagementResult(String sessionId) {
-        EngagementResult result = engagementResultRepository
-                .findTopBySessionIdOrderByCreatedAtUtcDesc(sessionId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "No engagement result found for session: " + sessionId));
-        return toEngagementResponse(result);
     }
 
     private AdminUserSummaryDto toUserSummary(UserAccount user) {
@@ -374,14 +241,6 @@ public class AdminService {
     private UserAccount requireUser(Long id) {
         return userAccountRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("User not found with id: " + id));
-    }
-
-    private String normalizeEmail(String email) {
-        String normalized = email == null ? "" : email.trim().toLowerCase();
-        if (normalized.isBlank() || !normalized.contains("@")) {
-            throw new IllegalArgumentException("Valid email is required");
-        }
-        return normalized;
     }
 
     private Object deserializeJson(String json) {

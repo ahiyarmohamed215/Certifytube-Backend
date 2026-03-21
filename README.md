@@ -1,4 +1,4 @@
-<p align="center">
+﻿<p align="center">
   <strong>CertifyTube</strong><br>
   AI-powered engagement verification and certification for YouTube-based learning
 </p>
@@ -14,17 +14,17 @@
 
 CertifyTube verifies that learners genuinely engage with YouTube educational content using a dual-layer ML pipeline, then issues tamper-proof certificates that employers can independently verify via QR code or public URL.
 
-**Backend service** — REST API, business logic, ML integration, PDF certificate generation, and data persistence.
+**Backend service** â€” REST API, business logic, ML integration, PDF certificate generation, and data persistence.
 
 ## How It Works
 
 ```
-Watch video → Track events → ML predicts engagement → Pass? → AI quiz → Pass? → Certificate
+Watch video â†’ Track events â†’ ML predicts engagement â†’ Pass? â†’ AI quiz â†’ Pass? â†’ Certificate
 ```
 
-1. **Engagement layer** — Captures granular playback events (play, pause, seek, buffering, speed). Extracts 40+ behavioral features. XGBoost/EBM models score engagement (0–1).
-2. **Knowledge layer** — AI-generated quiz from video transcript. Graded automatically.
-3. **Certification** — Both layers pass → server generates PDF with QR code → stored immutably → publicly verifiable.
+1. **Engagement layer** â€” Captures granular playback events (play, pause, seek, buffering, speed). Extracts 40+ behavioral features. XGBoost/EBM models score engagement (0â€“1).
+2. **Knowledge layer** â€” AI-generated quiz from video transcript. Graded automatically.
+3. **Certification** â€” Both layers pass â†’ server generates PDF with QR code â†’ stored immutably â†’ publicly verifiable.
 
 ## Quick Start
 
@@ -47,12 +47,12 @@ Server starts at `http://localhost:8080`. ML service expected at `http://localho
 ## Architecture
 
 ```
-Frontend (React)  ─────►  Backend (Spring Boot :8080)  ─────►  ML Service (FastAPI :8000)
-                                    │                                    │
-                                    ▼                                    ▼
+Frontend (React)  â”€â”€â”€â”€â”€â–º  Backend (Spring Boot :8080)  â”€â”€â”€â”€â”€â–º  ML Service (FastAPI :8000)
+                                    â”‚                                    â”‚
+                                    â–¼                                    â–¼
                               MySQL 8.x                          XGBoost / EBM
-                                    │
-                                    ▼
+                                    â”‚
+                                    â–¼
                           YouTube Data API v3
 ```
 
@@ -63,8 +63,8 @@ Full request/response schemas in [`FRONTEND_GUIDE.md`](./FRONTEND_GUIDE.md).
 ### Auth
 | Method | Endpoint | Auth |
 |--------|----------|------|
-| POST | `/api/auth/signup` | — |
-| POST | `/api/auth/login` | — |
+| POST | `/api/auth/signup` | â€” |
+| POST | `/api/auth/login` | â€” |
 | GET | `/api/auth/me` | JWT |
 | POST | `/api/auth/logout` | JWT |
 
@@ -95,11 +95,11 @@ Full request/response schemas in [`FRONTEND_GUIDE.md`](./FRONTEND_GUIDE.md).
 ### Admin
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/admin/stats` | System stats |
-| GET | `/api/admin/users` | List users |
-| PUT | `/api/admin/users/{id}/role` | Change role |
+| GET | `/api/admin/learners` | List learners |
+| GET | `/api/admin/learners/{learnerId}/profile` | Learner deep profile |
+| DELETE | `/api/admin/certificates/{id}` | Delete certificate |
 | POST | `/api/admin/certificates/{id}/revoke` | Revoke certificate |
-| DELETE | `/api/admin/{resource}/{id}` | Delete any resource |
+| POST | `/api/admin/certificates/{id}/activate` | Activate certificate |
 
 ## Configuration
 
@@ -113,39 +113,39 @@ Full request/response schemas in [`FRONTEND_GUIDE.md`](./FRONTEND_GUIDE.md).
 | `quiz.pass-score` | `80` | Quiz pass mark (%) |
 | `quiz.max-failed-attempts` | `2` | Quiz retries per window |
 | `auth.jwt.expiration-minutes` | `120` | Token TTL |
-| `youtube.api-key` | — | YouTube Data API v3 key |
+| `youtube.api-key` | â€” | YouTube Data API v3 key |
 | `app.public-base-url` | `http://localhost:8080` | Base URL for cert links |
 
 ## Project Layout
 
 ```
 src/main/java/com/certifytube/backend/
-├── client/          MlServiceClient, YouTubeClient
-├── config/          SecurityConfig (JWT filter, RBAC)
-├── controller/      10 REST controllers
-├── dto/             Request/response objects
-├── mapper/          MapStruct mappers
-├── model/           14 JPA entities
-├── repository/      13 Spring Data repos
-├── security/        JWT filter, UserDetailsService
-├── service/         Core business logic
-│   ├── CertificateService      Issue, verify, revoke, PDF generation
-│   ├── FeatureEngineering       40+ feature extraction from events
-│   ├── QuizService              Generate, grade, attempt management
-│   ├── SessionAnalyze           ML prediction orchestration
-│   └── SessionEventService      Event batch processing
-└── util/            STEM eligibility checker
+â”œâ”€â”€ client/          MlServiceClient, YouTubeClient
+â”œâ”€â”€ config/          SecurityConfig (JWT filter, RBAC)
+â”œâ”€â”€ controller/      10 REST controllers
+â”œâ”€â”€ dto/             Request/response objects
+â”œâ”€â”€ mapper/          MapStruct mappers
+â”œâ”€â”€ model/           14 JPA entities
+â”œâ”€â”€ repository/      13 Spring Data repos
+â”œâ”€â”€ security/        JWT filter, UserDetailsService
+â”œâ”€â”€ service/         Core business logic
+â”‚   â”œâ”€â”€ CertificateService      Issue, verify, revoke, PDF generation
+â”‚   â”œâ”€â”€ FeatureEngineering       40+ feature extraction from events
+â”‚   â”œâ”€â”€ QuizService              Generate, grade, attempt management
+â”‚   â”œâ”€â”€ SessionAnalyze           ML prediction orchestration
+â”‚   â””â”€â”€ SessionEventService      Event batch processing
+â””â”€â”€ util/            STEM eligibility checker
 ```
 
 ## Certificate System
 
 **Issuance conditions** (both required):
-- Engagement ≥ 85% (ML-verified)
-- Quiz ≥ 80% (knowledge-verified)
+- Engagement â‰¥ 85% (ML-verified)
+- Quiz â‰¥ 80% (knowledge-verified)
 
 **Certificate includes:** learner name, course title, scores, thresholds, video duration, YouTube link, issue date, unique ID, QR code, official seal, verification URL.
 
-**Verification:** Public endpoint — no auth. Returns `status: "ACTIVE"` or `"REVOKED"` with `valid: true/false`. Employers scan QR or open link.
+**Verification:** Public endpoint â€” no auth. Returns `status: "ACTIVE"` or `"REVOKED"` with `valid: true/false`. Employers scan QR or open link.
 
 **Revocation:** Admin-only. `POST /api/admin/certificates/{id}/revoke`. Certificate persists but shows as revoked on verification.
 
@@ -154,8 +154,8 @@ src/main/java/com/certifytube/backend/
 ## ML Integration
 
 ```
-Raw events → FeatureEngineering (40+ features) → ML Service → Engagement score
-                                                            → Explainability (SHAP / EBM)
+Raw events â†’ FeatureEngineering (40+ features) â†’ ML Service â†’ Engagement score
+                                                            â†’ Explainability (SHAP / EBM)
 ```
 
 | Model | Type | Use Case |
@@ -207,3 +207,4 @@ java -jar target/backend-0.0.1-SNAPSHOT.jar
 ## License
 
 Academic project. All rights reserved.
+

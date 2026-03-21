@@ -45,7 +45,7 @@ public class YouTubeClient {
     public String searchVideos(String query, int maxResults) {
         String key = youtubeApiKey == null ? "" : youtubeApiKey.trim();
         if (key.isBlank()) {
-            throw new IllegalStateException("youtube.api-key is missing");
+            throw new IllegalStateException("youtube.api-key is missing. Set YOUTUBE_API_KEY or youtube.api-key.");
         }
 
         String url = UriComponentsBuilder.fromPath("/search")
@@ -69,7 +69,7 @@ public class YouTubeClient {
     public String fetchVideosByIds(String videoIdsCommaSeparated) {
         String key = youtubeApiKey == null ? "" : youtubeApiKey.trim();
         if (key.isBlank()) {
-            throw new IllegalStateException("youtube.api-key is missing");
+            throw new IllegalStateException("youtube.api-key is missing. Set YOUTUBE_API_KEY or youtube.api-key.");
         }
 
         String url = UriComponentsBuilder.fromPath("/videos")

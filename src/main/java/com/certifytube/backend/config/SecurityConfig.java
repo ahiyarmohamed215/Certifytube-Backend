@@ -37,7 +37,6 @@ public class SecurityConfig {
                                 "/api/auth/resend-verification").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/auth/verify-email").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/youtube/search").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/youtube/transcript").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/certificates/verify/**").permitAll()
                         .requestMatchers("/error").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")

@@ -32,7 +32,7 @@ public class SessionController {
         this.videoCacheRepository = videoCacheRepository;
     }
 
-    @PostMapping({ "/api/sessions/start", "/start_session" })
+    @PostMapping("/api/sessions/start")
     public StartSessionResponse startSession(@Valid @RequestBody StartSessionRequest req) {
         UserAccount user = authenticatedUserService.currentUser();
         String userId = String.valueOf(user.getId());
@@ -71,7 +71,7 @@ public class SessionController {
                 .build();
     }
 
-    @PostMapping({ "/api/sessions/end", "/end_session" })
+    @PostMapping("/api/sessions/end")
     public EndSessionResponse endSession(@RequestParam String sessionId) {
         UserAccount user = authenticatedUserService.currentUser();
         log.info("User {} ending session {}", user.getId(), sessionId);
