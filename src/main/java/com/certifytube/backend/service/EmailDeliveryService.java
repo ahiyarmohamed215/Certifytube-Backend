@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.MailException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.net.URLEncoder;
@@ -41,6 +42,7 @@ public class EmailDeliveryService {
     @Value("${app.mail.logo-url:}")
     private String logoUrl;
 
+    @Async("mailTaskExecutor")
     public void sendEmailVerification(String toEmail, String rawToken) {
         String frontendBase = normalizedBaseUrl(frontendBaseUrl, "app.frontend-base-url");
         String backendBase = normalizedBaseUrl(backendBaseUrl, "app.public-base-url");
@@ -78,6 +80,7 @@ public class EmailDeliveryService {
         sendMail(toEmail, subject, plainText, html);
     }
 
+    @Async("mailTaskExecutor")
     public void sendPasswordReset(String toEmail, String rawToken) {
         String frontendBase = normalizedBaseUrl(frontendBaseUrl, "app.frontend-base-url");
         warnIfLocalBase(frontendBase, "app.frontend-base-url");
