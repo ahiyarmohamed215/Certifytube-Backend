@@ -44,6 +44,8 @@ public class EmailDeliveryService {
 
     @Async("mailTaskExecutor")
     public void sendEmailVerification(String toEmail, String rawToken) {
+        long startedAt = System.nanoTime();
+        log.info("MAIL_VERIFY_START to={}", maskEmail(toEmail));
         String frontendBase = normalizedBaseUrl(frontendBaseUrl, "app.frontend-base-url");
         String backendBase = normalizedBaseUrl(backendBaseUrl, "app.public-base-url");
         warnIfLocalBase(frontendBase, "app.frontend-base-url");
@@ -78,10 +80,13 @@ public class EmailDeliveryService {
                 "If you did not create this account, you can safely ignore this email.");
 
         sendMail(toEmail, subject, plainText, html);
+        log.info("MAIL_VERIFY_DONE to={} durationMs={}", maskEmail(toEmail), elapsedMs(startedAt));
     }
 
     @Async("mailTaskExecutor")
     public void sendPasswordReset(String toEmail, String rawToken) {
+        long startedAt = System.nanoTime();
+        log.info("MAIL_RESET_START to={}", maskEmail(toEmail));
         String frontendBase = normalizedBaseUrl(frontendBaseUrl, "app.frontend-base-url");
         warnIfLocalBase(frontendBase, "app.frontend-base-url");
         String encodedToken = URLEncoder.encode(rawToken, StandardCharsets.UTF_8);
@@ -110,6 +115,7 @@ public class EmailDeliveryService {
                 "This link expires soon. If you did not request this, ignore this email.");
 
         sendMail(toEmail, subject, plainText, html);
+        log.info("MAIL_RESET_DONE to={} durationMs={}", maskEmail(toEmail), elapsedMs(startedAt));
     }
 
     private void sendMail(String toEmail, String subject, String plainText, String htmlBody) {
@@ -250,5 +256,21 @@ public class EmailDeliveryService {
                 .replace(">", "&gt;")
                 .replace("\"", "&quot;")
                 .replace("'", "&#39;");
+    }
+
+    private String maskEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return "<empty>";
+        }
+        String trimmed = email.trim().toLowerCase();
+        int at = trimmed.indexOf('@');
+        if (at <= 1) {
+            return "***";
+        }
+        return trimmed.charAt(0) + "***" + trimmed.substring(at);
+    }
+
+    private long elapsedMs(long startedAtNs) {
+        return (System.nanoTime() - startedAtNs) / 1_000_000L;
     }
 }
