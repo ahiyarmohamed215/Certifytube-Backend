@@ -1,0 +1,13 @@
+target
+.git
+.gitignore
+.idea
+.vscode
+*.iml
+*.log
+test_out.txt
+compile_out.txt
+backend_test.http
+README.md
+API_CONTRACT.md
+FRONTEND_GUIDE.md
