@@ -40,7 +40,7 @@ Response:
 ```
 Notes:
 - Public endpoint.
-- Sends actual email via SMTP when account exists.
+- Sends actual email via configured transactional email provider when account exists.
 - Rate limited. Exceeding limits returns `429`.
 
 2b. `POST /api/auth/reset-password`  
@@ -80,7 +80,8 @@ Notes:
 Email Link Configuration (Production):
 - Set `APP_FRONTEND_BASE_URL` to your live frontend URL (example: `https://app.certifytube.com`).
 - Set `APP_PUBLIC_BASE_URL` to your live backend URL (example: `https://api.certifytube.com`).
-- Configure SMTP with `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, and `APP_MAIL_FROM`.
+- Configure Brevo with `APP_EMAIL_PROVIDER=brevo`, `BREVO_API_KEY`, and `APP_EMAIL_SENDER`.
+- Optional local SMTP fallback: set `APP_EMAIL_PROVIDER=smtp` and configure `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`.
 
 3. `GET /api/youtube/search?q=spring boot&limit=20`  
 Response:

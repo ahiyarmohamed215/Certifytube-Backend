@@ -1,13 +1,10 @@
 package com.certifytube.backend.service;
 
-import jakarta.mail.MessagingException;
-import jakarta.mail.internet.MimeMessage;
+import com.certifytube.backend.service.email.TransactionalEmailMessage;
+import com.certifytube.backend.service.email.TransactionalEmailProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.MailException;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -19,10 +16,10 @@ import java.nio.charset.StandardCharsets;
 @RequiredArgsConstructor
 public class EmailDeliveryService {
 
-    private final JavaMailSender mailSender;
+    private final TransactionalEmailProvider transactionalEmailProvider;
 
-    @Value("${app.mail.from:${spring.mail.username:}}")
-    private String mailFrom;
+    @Value("${app.email.sender:${app.mail.from:${spring.mail.username:}}}")
+    private String senderEmail;
 
     @Value("${app.frontend-base-url:http://localhost:3000}")
     private String frontendBaseUrl;
@@ -33,7 +30,7 @@ public class EmailDeliveryService {
     @Value("${app.company-name:CertifyTube}")
     private String companyName;
 
-    @Value("${app.support-email:${app.mail.from:${spring.mail.username:}}}")
+    @Value("${app.support-email:${app.email.sender:${app.mail.from:${spring.mail.username:}}}}")
     private String supportEmail;
 
     @Value("${app.mail.reply-to:}")
@@ -79,8 +76,16 @@ public class EmailDeliveryService {
                 apiVerifyLink,
                 "If you did not create this account, you can safely ignore this email.");
 
-        sendMail(toEmail, subject, plainText, html);
-        log.info("MAIL_VERIFY_DONE to={} durationMs={}", maskEmail(toEmail), elapsedMs(startedAt));
+        try {
+            sendMail(toEmail, subject, plainText, html);
+            log.info("MAIL_VERIFY_DONE to={} durationMs={}", maskEmail(toEmail), elapsedMs(startedAt));
+        } catch (Exception ex) {
+            log.error("MAIL_VERIFY_FAILED to={} durationMs={} reason={}",
+                    maskEmail(toEmail),
+                    elapsedMs(startedAt),
+                    ex.getMessage(),
+                    ex);
+        }
     }
 
     @Async("mailTaskExecutor")
@@ -114,32 +119,26 @@ public class EmailDeliveryService {
                 null,
                 "This link expires soon. If you did not request this, ignore this email.");
 
-        sendMail(toEmail, subject, plainText, html);
-        log.info("MAIL_RESET_DONE to={} durationMs={}", maskEmail(toEmail), elapsedMs(startedAt));
+        try {
+            sendMail(toEmail, subject, plainText, html);
+            log.info("MAIL_RESET_DONE to={} durationMs={}", maskEmail(toEmail), elapsedMs(startedAt));
+        } catch (Exception ex) {
+            log.error("MAIL_RESET_FAILED to={} durationMs={} reason={}",
+                    maskEmail(toEmail),
+                    elapsedMs(startedAt),
+                    ex.getMessage(),
+                    ex);
+        }
     }
 
     private void sendMail(String toEmail, String subject, String plainText, String htmlBody) {
-        if (mailFrom == null || mailFrom.isBlank()) {
-            throw new IllegalStateException("Mail sender is not configured (app.mail.from / spring.mail.username)");
-        }
-
-        try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, StandardCharsets.UTF_8.name());
-            helper.setFrom(mailFrom);
-            if (replyTo != null && !replyTo.isBlank()) {
-                helper.setReplyTo(replyTo);
-            }
-            helper.setTo(toEmail);
-            helper.setSubject(subject);
-            helper.setText(plainText, htmlBody);
-
-            mailSender.send(message);
-            log.info("Sent email to {}", toEmail);
-        } catch (MessagingException | MailException e) {
-            log.error("Failed to send email to {}: {}", toEmail, e.getMessage());
-            throw new IllegalStateException("Unable to send email at this time");
-        }
+        transactionalEmailProvider.send(new TransactionalEmailMessage(
+                toEmail,
+                subject,
+                plainText,
+                htmlBody,
+                replyTo
+        ));
     }
 
     private String buildHtmlMail(
@@ -175,7 +174,8 @@ public class EmailDeliveryService {
         String safeLogo = (logoUrl == null || logoUrl.isBlank()) ? "" :
                 "<img src='" + escapeHtml(logoUrl) + "' alt='" + escapeHtml(companyName) +
                         "' style='height:36px;display:block;margin:0 auto 16px;' />";
-        String safeSupport = (supportEmail == null || supportEmail.isBlank()) ? "" : escapeHtml(supportEmail);
+        String effectiveSupportEmail = (supportEmail == null || supportEmail.isBlank()) ? senderEmail : supportEmail;
+        String safeSupport = (effectiveSupportEmail == null || effectiveSupportEmail.isBlank()) ? "" : escapeHtml(effectiveSupportEmail);
 
         return """
                 <html>

@@ -52,16 +52,16 @@ public class AuthService {
     private final UserAccountMapper userAccountMapper;
 
     @Value("${auth.password-reset.expiry-minutes:15}")
-    private long passwordResetExpiryMinutes;
+    private long passwordResetExpiryMinutes = 15;
 
     @Value("${auth.email-verification.expiry-hours:24}")
-    private long emailVerificationExpiryHours;
+    private long emailVerificationExpiryHours = 24;
 
     @Value("${auth.signup.send-verification-email:true}")
-    private boolean signupSendVerificationEmail;
+    private boolean signupSendVerificationEmail = true;
 
     @Value("${auth.signup.fail-on-email-error:false}")
-    private boolean signupFailOnEmailError;
+    private boolean signupFailOnEmailError = false;
 
     @Transactional
     public AuthResponse signUp(SignUpRequest req) {
