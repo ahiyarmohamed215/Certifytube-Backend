@@ -20,6 +20,8 @@ import com.certifytube.backend.repository.SessionRepository;
 import com.certifytube.backend.repository.UserAccountRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.MapperFeature;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,7 +41,9 @@ public class AdminService {
     private final QuizQuestionRepository quizQuestionRepository;
     private final QuizAttemptRepository quizAttemptRepository;
     private final EngagementResultRepository engagementResultRepository;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = JsonMapper.builder()
+            .disable(MapperFeature.REQUIRE_HANDLERS_FOR_JAVA8_TIMES)
+            .build();
 
     public List<AdminUserSummaryDto> getLearners() {
         return userAccountRepository.findByRoleOrderByCreatedAtUtcDesc(Role.LEARNER)
