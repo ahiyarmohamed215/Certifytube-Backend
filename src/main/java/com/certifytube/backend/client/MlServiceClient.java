@@ -21,16 +21,19 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class MlServiceClient {
 
-        private static final int CONNECT_TIMEOUT_MS = 5000;
-        private static final Duration RESPONSE_TIMEOUT = Duration.ofSeconds(25);
-
         @Value("${ml.base-url}")
         private String mlBaseUrl;
 
+        @Value("${ml.client.connect-timeout-ms:120000}")
+        private int connectTimeoutMs;
+
+        @Value("${ml.client.response-timeout-ms:120000}")
+        private long responseTimeoutMs;
+
         private WebClient client() {
                 HttpClient httpClient = HttpClient.create()
-                                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, CONNECT_TIMEOUT_MS)
-                                .responseTimeout(RESPONSE_TIMEOUT);
+                                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, connectTimeoutMs)
+                                .responseTimeout(Duration.ofMillis(responseTimeoutMs));
                 return WebClient.builder()
                                 .baseUrl(mlBaseUrl)
                                 .clientConnector(new ReactorClientHttpConnector(httpClient))
