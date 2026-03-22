@@ -7,7 +7,6 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.LocalDateTime;
-import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -21,7 +20,6 @@ public class AdminLearnerProfileResponse {
     private List<SessionInsight> sessions;
     private List<QuizInsight> quizzes;
     private List<CertificateInsight> certificates;
-    private List<YouTubeSearchInsight> youtubeSearches;
 
     @Getter
     @Setter
@@ -110,33 +108,4 @@ public class AdminLearnerProfileResponse {
         private LocalDateTime createdAtUtc;
     }
 
-    @Getter
-    @Setter
-    @NoArgsConstructor
-    @AllArgsConstructor
-    @Builder
-    public static class YouTubeSearchInsight {
-        private Long cacheId;
-        private String queryText;
-        private LocalDate lastRefreshedOn;
-        private LocalDateTime createdAtUtc;
-        private LocalDateTime updatedAtUtc;
-        private List<YouTubeSearchItemInsight> items;
-    }
-
-    @Getter
-    @Setter
-    @NoArgsConstructor
-    @AllArgsConstructor
-    @Builder
-    public static class YouTubeSearchItemInsight {
-        private Integer positionIndex;
-        private String videoId;
-        private String title;
-        private String channelTitle;
-        private String thumbnailUrl;
-        private String publishedAt;
-        private String iframeUrl;
-        private String categoryId;
-    }
 }

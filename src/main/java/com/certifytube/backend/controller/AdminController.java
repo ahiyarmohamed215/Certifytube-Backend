@@ -9,7 +9,6 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -28,10 +27,8 @@ public class AdminController {
     }
 
     @GetMapping("/learners/{learnerId}/profile")
-    public AdminLearnerProfileResponse getLearnerProfile(
-            @PathVariable Long learnerId,
-            @RequestParam(name = "searchLimit", defaultValue = "30") int searchLimit) {
-        return adminService.getLearnerProfile(learnerId, searchLimit);
+    public AdminLearnerProfileResponse getLearnerProfile(@PathVariable Long learnerId) {
+        return adminService.getLearnerProfile(learnerId);
     }
 
     @DeleteMapping("/certificates/{certificateId}")

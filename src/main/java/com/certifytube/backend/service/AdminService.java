@@ -10,8 +10,6 @@ import com.certifytube.backend.model.QuizQuestion;
 import com.certifytube.backend.model.Role;
 import com.certifytube.backend.model.Session;
 import com.certifytube.backend.model.UserAccount;
-import com.certifytube.backend.model.YouTubeSearchCache;
-import com.certifytube.backend.model.YouTubeSearchCacheItem;
 import com.certifytube.backend.repository.CertificateRepository;
 import com.certifytube.backend.repository.EngagementResultRepository;
 import com.certifytube.backend.repository.QuizAttemptRepository;
@@ -20,16 +18,12 @@ import com.certifytube.backend.repository.QuizRepository;
 import com.certifytube.backend.repository.SessionFeaturesRepository;
 import com.certifytube.backend.repository.SessionRepository;
 import com.certifytube.backend.repository.UserAccountRepository;
-import com.certifytube.backend.repository.YouTubeSearchCacheItemRepository;
-import com.certifytube.backend.repository.YouTubeSearchCacheRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -45,8 +39,6 @@ public class AdminService {
     private final QuizQuestionRepository quizQuestionRepository;
     private final QuizAttemptRepository quizAttemptRepository;
     private final EngagementResultRepository engagementResultRepository;
-    private final YouTubeSearchCacheRepository youTubeSearchCacheRepository;
-    private final YouTubeSearchCacheItemRepository youTubeSearchCacheItemRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public List<AdminUserSummaryDto> getLearners() {
@@ -56,7 +48,7 @@ public class AdminService {
                 .toList();
     }
 
-    public AdminLearnerProfileResponse getLearnerProfile(Long learnerId, int searchLimit) {
+    public AdminLearnerProfileResponse getLearnerProfile(Long learnerId) {
         UserAccount learner = requireUser(learnerId);
         if (learner.getRole() != Role.LEARNER) {
             throw new IllegalArgumentException("Selected user is not a learner");
@@ -71,44 +63,7 @@ public class AdminService {
                 .sessions(sessions.stream().map(this::toSessionInsight).toList())
                 .quizzes(quizzes.stream().map(this::toQuizInsight).toList())
                 .certificates(certificates.stream().map(this::toCertificateInsight).toList())
-                .youtubeSearches(getYouTubeSearches(searchLimit))
                 .build();
-    }
-
-    public List<AdminLearnerProfileResponse.YouTubeSearchInsight> getYouTubeSearches(int limit) {
-        int safeLimit = Math.max(1, Math.min(limit, 200));
-        List<YouTubeSearchCache> caches = youTubeSearchCacheRepository.findAll(Sort.by(Sort.Direction.DESC, "updatedAtUtc"));
-        if (caches.isEmpty()) {
-            return List.of();
-        }
-
-        List<AdminLearnerProfileResponse.YouTubeSearchInsight> out = new ArrayList<>();
-        for (YouTubeSearchCache cache : caches.stream().limit(safeLimit).toList()) {
-            List<YouTubeSearchCacheItem> items = youTubeSearchCacheItemRepository.findByCacheOrderByPositionIndexAsc(cache);
-            List<AdminLearnerProfileResponse.YouTubeSearchItemInsight> mappedItems = items.stream()
-                    .map(item -> AdminLearnerProfileResponse.YouTubeSearchItemInsight.builder()
-                            .positionIndex(item.getPositionIndex())
-                            .videoId(item.getVideo().getVideoId())
-                            .title(item.getVideo().getTitle())
-                            .channelTitle(item.getVideo().getChannelTitle())
-                            .thumbnailUrl(item.getVideo().getThumbnailUrl())
-                            .publishedAt(item.getVideo().getPublishedAt())
-                            .iframeUrl(item.getVideo().getIframeUrl())
-                            .categoryId(item.getVideo().getCategoryId())
-                            .build())
-                    .toList();
-
-            out.add(AdminLearnerProfileResponse.YouTubeSearchInsight.builder()
-                    .cacheId(cache.getId())
-                    .queryText(cache.getQueryText())
-                    .lastRefreshedOn(cache.getLastRefreshedOn())
-                    .createdAtUtc(cache.getCreatedAtUtc())
-                    .updatedAtUtc(cache.getUpdatedAtUtc())
-                    .items(mappedItems)
-                    .build());
-        }
-
-        return out;
     }
 
     @Transactional
