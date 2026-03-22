@@ -14,35 +14,35 @@ public class WebConfig implements WebMvcConfigurer {
     @Value("${app.frontend-base-url}")
     private String frontendBaseUrl;
 
-    @Value("${app.cors.allowed-origins:}")
-    private String extraAllowedOrigins;
+    @Value("${app.cors.allowed-origin-patterns:}")
+    private String extraAllowedOriginPatterns;
 
-    private String[] resolvedOrigins() {
-        Set<String> origins = new LinkedHashSet<>();
-        origins.add(frontendBaseUrl);
-        origins.add("http://localhost:5173");
-        origins.add("http://127.0.0.1:5173");
-        origins.add("http://localhost:3000");
-        origins.add("http://127.0.0.1:3000");
+    private String[] resolvedOriginPatterns() {
+        Set<String> patterns = new LinkedHashSet<>();
+        patterns.add(frontendBaseUrl);
+        patterns.add("http://localhost:*");
+        patterns.add("http://127.0.0.1:*");
+        patterns.add("https://*.vercel.app");
 
-        if (extraAllowedOrigins != null && !extraAllowedOrigins.isBlank()) {
-            for (String origin : extraAllowedOrigins.split(",")) {
-                String trimmed = origin.trim();
+        if (extraAllowedOriginPatterns != null && !extraAllowedOriginPatterns.isBlank()) {
+            for (String pattern : extraAllowedOriginPatterns.split(",")) {
+                String trimmed = pattern.trim();
                 if (!trimmed.isEmpty()) {
-                    origins.add(trimmed);
+                    patterns.add(trimmed);
                 }
             }
         }
 
-        return origins.toArray(new String[0]);
+        return patterns.toArray(new String[0]);
     }
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
-                .allowedOrigins(resolvedOrigins())
+                .allowedOriginPatterns(resolvedOriginPatterns())
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
-                .allowCredentials(true);
+                .allowCredentials(true)
+                .maxAge(3600);
     }
 }
