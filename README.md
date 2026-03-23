@@ -1,210 +1,213 @@
-﻿<p align="center">
-  <strong>CertifyTube</strong><br>
-  AI-powered engagement verification and certification for YouTube-based learning
-</p>
+# CertifyTube Backend
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Spring%20Boot-4.0.2-6DB33F?logo=springboot&logoColor=white" />
-  <img src="https://img.shields.io/badge/Java-21-ED8B00?logo=openjdk&logoColor=white" />
-  <img src="https://img.shields.io/badge/MySQL-8.x-4479A1?logo=mysql&logoColor=white" />
-  <img src="https://img.shields.io/badge/ML-XGBoost%20%7C%20EBM-3776AB?logo=python&logoColor=white" />
-</p>
+Backend service for CertifyTube, an AI-assisted learning verification platform that measures real learner engagement on YouTube-based educational content, generates adaptive quizzes, and issues verifiable certificates.
 
----
+This repository is structured as a professional backend codebase for an academic capstone implementation. It provides REST APIs, security, persistence, ML integration, certificate generation, and audit-friendly request logging.
 
-CertifyTube verifies that learners genuinely engage with YouTube educational content using a dual-layer ML pipeline, then issues tamper-proof certificates that employers can independently verify via QR code or public URL.
+## Project Context
 
-**Backend service** â€” REST API, business logic, ML integration, PDF certificate generation, and data persistence.
+CertifyTube Backend is part of an IIT final-year project.
 
-## How It Works
+The objective of the system is to validate that a learner has:
 
+- watched and interacted with video content in a meaningful way
+- passed an AI-generated quiz based on the learning material
+- earned a certificate that can be verified publicly
+
+## Core Capabilities
+
+- JWT-based authentication and role-based authorization
+- Session lifecycle management for learning activity
+- Batch ingestion of playback telemetry
+- Feature engineering for engagement analysis
+- ML service integration for engagement scoring
+- AI quiz generation and quiz attempt evaluation
+- Certificate issuance, PDF generation, QR verification, activation, and revocation
+- Admin reporting and learner profile APIs
+
+## High-Level Flow
+
+```text
+User watches a video
+-> frontend sends playback events
+-> backend computes engagement features
+-> ML service scores learner engagement
+-> backend generates quiz
+-> learner submits quiz
+-> backend issues certificate if all thresholds pass
+-> employer or reviewer verifies certificate through public endpoint
 ```
-Watch video â†’ Track events â†’ ML predicts engagement â†’ Pass? â†’ AI quiz â†’ Pass? â†’ Certificate
-```
-
-1. **Engagement layer** â€” Captures granular playback events (play, pause, seek, buffering, speed). Extracts 40+ behavioral features. XGBoost/EBM models score engagement (0â€“1).
-2. **Knowledge layer** â€” AI-generated quiz from video transcript. Graded automatically.
-3. **Certification** â€” Both layers pass â†’ server generates PDF with QR code â†’ stored immutably â†’ publicly verifiable.
-
-## Quick Start
-
-**Requirements:** Java 21+, MySQL 8+, Python ML service running on `:8000`
-
-```bash
-# 1. Database
-mysql -u root -p -e "CREATE DATABASE certifytube CHARACTER SET utf8mb4;"
-
-# 2. Environment
-export AUTH_JWT_SECRET="your-256-bit-secret"
-export YOUTUBE_API_KEY="AIzaSy..."
-
-# 3. Run
-./mvnw spring-boot:run
-```
-
-Server starts at `http://localhost:8080`. ML service expected at `http://localhost:8000`.
 
 ## Architecture
 
-```
-Frontend (React)  â”€â”€â”€â”€â”€â–º  Backend (Spring Boot :8080)  â”€â”€â”€â”€â”€â–º  ML Service (FastAPI :8000)
-                                    â”‚                                    â”‚
-                                    â–¼                                    â–¼
-                              MySQL 8.x                          XGBoost / EBM
-                                    â”‚
-                                    â–¼
-                          YouTube Data API v3
-```
-
-## API Reference
-
-Full request/response schemas in [`FRONTEND_GUIDE.md`](./FRONTEND_GUIDE.md).
-
-### Auth
-| Method | Endpoint | Auth |
-|--------|----------|------|
-| POST | `/api/auth/signup` | â€” |
-| POST | `/api/auth/login` | â€” |
-| GET | `/api/auth/me` | JWT |
-| POST | `/api/auth/logout` | JWT |
-
-### Sessions & Events
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/sessions/start` | Start or resume session |
-| POST | `/api/events/batch` | Batch ingest playback events |
-| POST | `/api/sessions/end` | End session |
-| POST | `/api/sessions/{id}/analyze` | Trigger ML engagement analysis |
-| DELETE | `/api/sessions/{id}` | Delete session |
-
-### Quiz
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/quiz/eligibility` | Check eligibility |
-| POST | `/api/quiz/generate` | Generate AI quiz |
-| POST | `/api/quiz/{id}/submit` | Submit answers |
-| GET | `/api/quiz/{id}/result` | Get result |
-
-### Certificates
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| GET | `/api/certificates/{id}` | JWT | Get certificate |
-| GET | `/api/certificates/{id}/pdf` | JWT | Download PDF |
-| GET | `/api/certificates/verify/{token}` | **Public** | Employer verification |
-
-### Admin
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/admin/learners` | List learners |
-| GET | `/api/admin/learners/{learnerId}/profile` | Learner deep profile |
-| DELETE | `/api/admin/certificates/{id}` | Delete certificate |
-| POST | `/api/admin/certificates/{id}/revoke` | Revoke certificate |
-| POST | `/api/admin/certificates/{id}/activate` | Activate certificate |
-
-## Configuration
-
-`src/main/resources/application.properties`
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `ml.base-url` | `http://localhost:8000` | ML service endpoint |
-| `ml.default-model` | `xgboost` | `xgboost` or `ebm` |
-| `quiz.min-engagement-score` | `0.85` | Engagement pass threshold |
-| `quiz.pass-score` | `80` | Quiz pass mark (%) |
-| `quiz.max-failed-attempts` | `2` | Quiz retries per window |
-| `auth.jwt.expiration-minutes` | `120` | Token TTL |
-| `youtube.api-key` | â€” | YouTube Data API v3 key |
-| `app.public-base-url` | `http://localhost:8080` | Base URL for cert links |
-
-## Project Layout
-
-```
-src/main/java/com/certifytube/backend/
-â”œâ”€â”€ client/          MlServiceClient, YouTubeClient
-â”œâ”€â”€ config/          SecurityConfig (JWT filter, RBAC)
-â”œâ”€â”€ controller/      10 REST controllers
-â”œâ”€â”€ dto/             Request/response objects
-â”œâ”€â”€ mapper/          MapStruct mappers
-â”œâ”€â”€ model/           14 JPA entities
-â”œâ”€â”€ repository/      13 Spring Data repos
-â”œâ”€â”€ security/        JWT filter, UserDetailsService
-â”œâ”€â”€ service/         Core business logic
-â”‚   â”œâ”€â”€ CertificateService      Issue, verify, revoke, PDF generation
-â”‚   â”œâ”€â”€ FeatureEngineering       40+ feature extraction from events
-â”‚   â”œâ”€â”€ QuizService              Generate, grade, attempt management
-â”‚   â”œâ”€â”€ SessionAnalyze           ML prediction orchestration
-â”‚   â””â”€â”€ SessionEventService      Event batch processing
-â””â”€â”€ util/            STEM eligibility checker
+```text
+Frontend
+  -> Spring Boot Backend
+      -> MySQL
+      -> External ML Service
+      -> YouTube Data API
+      -> Email Provider
 ```
 
-## Certificate System
+## Technology Stack
 
-**Issuance conditions** (both required):
-- Engagement â‰¥ 85% (ML-verified)
-- Quiz â‰¥ 80% (knowledge-verified)
-
-**Certificate includes:** learner name, course title, scores, thresholds, video duration, YouTube link, issue date, unique ID, QR code, official seal, verification URL.
-
-**Verification:** Public endpoint â€” no auth. Returns `status: "ACTIVE"` or `"REVOKED"` with `valid: true/false`. Employers scan QR or open link.
-
-**Revocation:** Admin-only. `POST /api/admin/certificates/{id}/revoke`. Certificate persists but shows as revoked on verification.
-
-**PDF:** Landscape A4, server-generated (PDFBox), stored as LONGBLOB. QR code generated via ZXing.
-
-## ML Integration
-
-```
-Raw events â†’ FeatureEngineering (40+ features) â†’ ML Service â†’ Engagement score
-                                                            â†’ Explainability (SHAP / EBM)
-```
-
-| Model | Type | Use Case |
-|-------|------|----------|
-| XGBoost | Gradient Boosted Trees | Primary model, SHAP explanations |
-| EBM | Explainable Boosting Machine | Glass-box interpretable model |
-
-Features include: `watch_ratio`, `pause_frequency`, `seek_count`, `speed_changes`, `active_watch_sec`, `buffer_ratio`, `completion_flag`, and 30+ more. Schema defined in `feature_contract_v1.json`.
-
-## Security
-
-- JWT (HS256) with configurable expiry and revocation
-- BCrypt password hashing
-- Role-based access: `LEARNER`, `ADMIN`
-- Resource ownership validation on all endpoints
-- Public endpoints: auth, YouTube search, certificate verification only
-
-## Tech Stack
-
-| Component | Technology |
-|-----------|-----------|
-| Framework | Spring Boot 4.0.2 |
+| Area | Technology |
+|------|------------|
 | Language | Java 21 |
-| Database | MySQL 8.x + Hibernate |
-| Auth | JWT (jjwt 0.12.6) |
-| PDF | Apache PDFBox 3.0.4 |
-| QR | Google ZXing 3.5.3 |
-| Mapping | MapStruct 1.6.3 |
-| HTTP | Spring WebFlux (WebClient) |
-| ML | Python FastAPI (external) |
-| Build | Maven (wrapper included) |
+| Framework | Spring Boot 4.0.2 |
+| Security | Spring Security + JWT |
+| Database | MySQL 8 |
+| ORM | Spring Data JPA / Hibernate |
+| HTTP Clients | WebClient |
+| Mapping | MapStruct |
+| PDF | Apache PDFBox |
+| QR Code | ZXing |
+| Build | Maven Wrapper |
 
-## Building
+## Repository Layout
+
+```text
+src/main/java/com/certifytube/backend
+|- client        External service clients
+|- config        Security, async, web, logging
+|- controller    REST endpoints
+|- dto           Request and response models
+|- exception     API error handling
+|- mapper        DTO/entity mapping
+|- model         JPA entities
+|- repository    Persistence layer
+|- security      JWT and user detail services
+|- service       Business logic
+`- util          Shared helper utilities
+```
+
+## Runtime Requirements
+
+- Java 21
+- Maven wrapper included in the repository
+- MySQL 8 or compatible MySQL deployment
+- External ML service reachable from the backend
+
+## Required Configuration
+
+The backend reads configuration from environment variables and `src/main/resources/application.properties`.
+
+Minimum required variables for local startup:
+
+| Variable | Purpose |
+|----------|---------|
+| `SPRING_DATASOURCE_URL` | MySQL JDBC connection string |
+| `SPRING_DATASOURCE_USERNAME` | Database username |
+| `SPRING_DATASOURCE_PASSWORD` | Database password |
+| `AUTH_JWT_SECRET` | JWT signing secret |
+| `ML_BASE_URL` | Base URL of the ML service |
+| `APP_PUBLIC_BASE_URL` | Public backend URL used in verification links |
+| `APP_FRONTEND_BASE_URL` | Frontend URL used in email links |
+
+Common optional variables:
+
+| Variable | Purpose |
+|----------|---------|
+| `YOUTUBE_API_KEY` | YouTube Data API access |
+| `APP_EMAIL_PROVIDER` | `brevo` or `smtp` |
+| `BREVO_API_KEY` | Brevo transactional email integration |
+| `MAIL_HOST` / `MAIL_USERNAME` / `MAIL_PASSWORD` | SMTP configuration |
+
+## Local Development
+
+Create the database first:
 
 ```bash
-# Compile
+mysql -u root -p -e "CREATE DATABASE certifytube CHARACTER SET utf8mb4;"
+```
+
+Run the backend:
+
+```bash
+./mvnw spring-boot:run
+```
+
+Windows:
+
+```powershell
+.\mvnw.cmd spring-boot:run
+```
+
+Default application port:
+
+```text
+http://localhost:8080
+```
+
+## Build and Test
+
+Compile:
+
+```bash
 ./mvnw compile
+```
 
-# Package (skip tests)
-./mvnw clean package -DskipTests
+Windows:
 
-# Run JAR
-java -jar target/backend-0.0.1-SNAPSHOT.jar
+```powershell
+.\mvnw.cmd compile
+```
 
-# Tests
+Run tests:
+
+```bash
 ./mvnw test
 ```
 
+Package artifact:
+
+```bash
+./mvnw clean package -DskipTests
+```
+
+## Functional Areas
+
+### Authentication
+
+- signup, login, logout, email verification
+- password reset and password change
+- authenticated user profile lookup
+
+### Sessions and Event Tracking
+
+- start, resume, end, and delete learning sessions
+- batch event ingestion for player telemetry
+- ownership validation on all protected session resources
+
+### ML and Quiz
+
+- engagement feature extraction from session events
+- ML prediction orchestration through the external ML service
+- quiz generation, grading, retry limits, and result retrieval
+
+### Certificates
+
+- issue certificates after engagement and quiz thresholds pass
+- download certificate PDF
+- public verification by token
+- admin revoke and reactivate workflows
+
+## Security and Operational Notes
+
+- JWT is used for stateless API authentication
+- request logging includes request correlation id support
+- resource ownership is enforced in services and controllers
+- email delivery supports both SMTP and Brevo
+- certificate verification is intentionally public
+
+## Ownership and Usage Notice
+
+This repository is an IIT final-year project and the original work of its author.
+
+No permission is granted to copy, redistribute, reuse, publish, submit, or present this codebase or its contents as another person's work without the author's explicit written approval.
+
+This repository is provided as proprietary academic project material. All rights are reserved by the author.
+
 ## License
 
-Academic project. All rights reserved.
-
+See [LICENSE](./LICENSE) for the repository usage restrictions.

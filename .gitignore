@@ -4,6 +4,18 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
+### Python / Transcript Tooling ###
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+venv/
+.venv/
+env/
+
 ### STS ###
 .apt_generated
 .classpath
@@ -31,5 +43,12 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Backups / Temp ###
+*.bak
+*.old
+*.orig
+*.tmp
+*~
 
 .fake
