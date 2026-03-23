@@ -24,9 +24,6 @@ public class EmailDeliveryService {
     @Value("${app.frontend-base-url:http://localhost:3000}")
     private String frontendBaseUrl;
 
-    @Value("${app.public-base-url:http://localhost:8080}")
-    private String backendBaseUrl;
-
     @Value("${app.company-name:CertifyTube}")
     private String companyName;
 
@@ -44,12 +41,10 @@ public class EmailDeliveryService {
         long startedAt = System.nanoTime();
         log.info("MAIL_VERIFY_START to={}", maskEmail(toEmail));
         String frontendBase = normalizedBaseUrl(frontendBaseUrl, "app.frontend-base-url");
-        String backendBase = normalizedBaseUrl(backendBaseUrl, "app.public-base-url");
         warnIfLocalBase(frontendBase, "app.frontend-base-url");
-        warnIfLocalBase(backendBase, "app.public-base-url");
+
         String encodedToken = URLEncoder.encode(rawToken, StandardCharsets.UTF_8);
         String verifyLink = frontendBase + "/verify-email?token=" + encodedToken;
-        String apiVerifyLink = backendBase + "/api/auth/verify-email?token=" + encodedToken;
         String subject = "Verify your " + companyName + " account";
 
         String plainText = """
@@ -58,22 +53,20 @@ public class EmailDeliveryService {
                 Please verify your email:
                 %s
 
-                Fallback direct API verification:
+                If the button does not open, copy and paste this link in your browser:
                 %s
 
                 If you did not create this account, ignore this email.
-                """.formatted(companyName, verifyLink, apiVerifyLink);
+                """.formatted(companyName, verifyLink, verifyLink);
 
         String html = buildHtmlMail(
                 "Verify Your Email",
-                "Welcome to " + escapeHtml(companyName),
-                "Please confirm your email address to activate your account.",
+                "Welcome to " + companyName,
+                "Please confirm your email address to activate your account and secure your access.",
                 "Verify Email",
                 verifyLink,
-                "If the button doesn't work, use this link:",
+                "If the button does not work, use this link:",
                 verifyLink,
-                "Fallback API verification link:",
-                apiVerifyLink,
                 "If you did not create this account, you can safely ignore this email.");
 
         try {
@@ -94,6 +87,7 @@ public class EmailDeliveryService {
         log.info("MAIL_RESET_START to={}", maskEmail(toEmail));
         String frontendBase = normalizedBaseUrl(frontendBaseUrl, "app.frontend-base-url");
         warnIfLocalBase(frontendBase, "app.frontend-base-url");
+
         String encodedToken = URLEncoder.encode(rawToken, StandardCharsets.UTF_8);
         String resetLink = frontendBase + "/reset-password?token=" + encodedToken;
         String subject = "Reset your " + companyName + " password";
@@ -113,10 +107,8 @@ public class EmailDeliveryService {
                 "Use the button below to set a new password for your account.",
                 "Reset Password",
                 resetLink,
-                "If the button doesn't work, use this link:",
+                "If the button does not work, use this link:",
                 resetLink,
-                null,
-                null,
                 "This link expires soon. If you did not request this, ignore this email.");
 
         try {
@@ -147,63 +139,78 @@ public class EmailDeliveryService {
             String intro,
             String buttonText,
             String buttonUrl,
-            String primaryFallbackLabel,
-            String primaryFallbackUrl,
-            String secondaryFallbackLabel,
-            String secondaryFallbackUrl,
+            String fallbackLabel,
+            String fallbackUrl,
             String footNote) {
 
-        StringBuilder fallback = new StringBuilder();
-        if (primaryFallbackLabel != null && primaryFallbackUrl != null) {
-            fallback.append("<p style='margin:14px 0 0;color:#475569;font-size:13px;'>")
-                    .append(escapeHtml(primaryFallbackLabel))
-                    .append("<br><a href='").append(escapeHtml(primaryFallbackUrl))
-                    .append("' style='color:#2563eb;'>")
-                    .append(escapeHtml(primaryFallbackUrl))
-                    .append("</a></p>");
-        }
-        if (secondaryFallbackLabel != null && secondaryFallbackUrl != null) {
-            fallback.append("<p style='margin:10px 0 0;color:#475569;font-size:13px;'>")
-                    .append(escapeHtml(secondaryFallbackLabel))
-                    .append("<br><a href='").append(escapeHtml(secondaryFallbackUrl))
-                    .append("' style='color:#2563eb;'>")
-                    .append(escapeHtml(secondaryFallbackUrl))
-                    .append("</a></p>");
+        String fallback = "";
+        if (fallbackLabel != null && fallbackUrl != null) {
+            fallback = "<table role='presentation' width='100%' cellspacing='0' cellpadding='0' " +
+                    "style='margin:20px 0 0;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;'>" +
+                    "<tr><td style='padding:14px 16px;'>" +
+                    "<p style='margin:0 0 8px;color:#9a3412;font-size:13px;font-weight:600;'>" + escapeHtml(fallbackLabel) + "</p>" +
+                    "<a href='" + escapeHtml(fallbackUrl) + "' " +
+                    "style='color:#b91c1c;font-size:12px;line-height:1.6;word-break:break-all;text-decoration:none;'>" +
+                    escapeHtml(fallbackUrl) +
+                    "</a></td></tr></table>";
         }
 
         String safeLogo = (logoUrl == null || logoUrl.isBlank()) ? "" :
                 "<img src='" + escapeHtml(logoUrl) + "' alt='" + escapeHtml(companyName) +
-                        "' style='height:36px;display:block;margin:0 auto 16px;' />";
+                        "' style='height:34px;display:block;margin:0 auto 16px;' />";
+
         String effectiveSupportEmail = (supportEmail == null || supportEmail.isBlank()) ? senderEmail : supportEmail;
         String safeSupport = (effectiveSupportEmail == null || effectiveSupportEmail.isBlank()) ? "" : escapeHtml(effectiveSupportEmail);
 
         return """
+                <!doctype html>
                 <html>
-                  <body style="margin:0;padding:0;background:#f1f5f9;font-family:Segoe UI,Arial,sans-serif;">
-                    <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" style="padding:24px 12px;">
+                  <head>
+                    <meta charset="UTF-8" />
+                    <meta name="viewport" content="width=device-width,initial-scale=1" />
+                    <title>%s</title>
+                  </head>
+                  <body style="margin:0;padding:0;background:#0f1115;font-family:'Segoe UI',Arial,sans-serif;">
+                    <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" style="padding:28px 10px;background:radial-gradient(circle at 15%% 15%%,#1f2937 0,#0f1115 55%%,#090b0f 100%%);">
                       <tr>
                         <td align="center">
-                          <table role="presentation" width="640" cellspacing="0" cellpadding="0" style="max-width:640px;width:100%%;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;">
+                          <table role="presentation" width="640" cellspacing="0" cellpadding="0" style="max-width:640px;width:100%%;">
                             <tr>
-                              <td style="background:#b91c1c;color:#ffffff;padding:18px 24px;font-size:14px;letter-spacing:.3px;">%s</td>
-                            </tr>
-                            <tr>
-                              <td style="padding:28px 24px;">
-                                %s
-                                <h1 style="margin:0 0 10px;font-size:24px;color:#0f172a;">%s</h1>
-                                <p style="margin:0 0 18px;color:#334155;line-height:1.6;font-size:15px;">%s</p>
-                                <p style="margin:0 0 18px;">
-                                  <a href="%s" style="background:#dc2626;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:8px;display:inline-block;font-weight:600;">
-                                    %s
-                                  </a>
-                                </p>
-                                %s
-                                <p style="margin:18px 0 0;color:#64748b;font-size:12px;line-height:1.6;">%s</p>
+                              <td style="padding:0;">
+                                <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" style="background:linear-gradient(135deg,#f59e0b 0%%,#ef4444 36%%,#7f1d1d 100%%);border-radius:18px 18px 0 0;">
+                                  <tr>
+                                    <td style="padding:20px 24px 18px;color:#ffffff;">
+                                      <p style="margin:0;font-size:11px;letter-spacing:1.1px;text-transform:uppercase;opacity:0.92;">Secure Account Message</p>
+                                      <p style="margin:6px 0 0;font-size:18px;font-weight:700;">%s</p>
+                                    </td>
+                                  </tr>
+                                </table>
                               </td>
                             </tr>
                             <tr>
-                              <td style="padding:14px 24px;background:#f8fafc;color:#64748b;font-size:12px;">
-                                %s support: %s
+                              <td style="padding:28px 24px;background:#ffffff;border:1px solid #e2e8f0;border-top:0;border-radius:0 0 18px 18px;">
+                                %s
+                                <h1 style="margin:0 0 10px;font-size:29px;line-height:1.25;color:#0f172a;font-weight:700;">%s</h1>
+                                <p style="margin:0 0 22px;color:#334155;line-height:1.7;font-size:15px;">%s</p>
+                                <table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 0 10px;">
+                                  <tr>
+                                    <td style="border-radius:999px;background:linear-gradient(135deg,#ef4444,#991b1b);">
+                                      <a href="%s" style="color:#ffffff;text-decoration:none;padding:13px 26px;border-radius:999px;display:inline-block;font-weight:700;font-size:14px;letter-spacing:.2px;">
+                                        %s
+                                      </a>
+                                    </td>
+                                  </tr>
+                                </table>
+                                <p style="margin:0;color:#64748b;font-size:12px;line-height:1.6;">
+                                  For your security, this link is intended only for your account action.
+                                </p>
+                                %s
+                                <p style="margin:18px 0 0;color:#475569;font-size:12px;line-height:1.7;">%s</p>
+                              </td>
+                            </tr>
+                            <tr>
+                              <td style="padding:16px 22px;color:#94a3b8;font-size:11px;text-align:center;">
+                                %s support: <a href="mailto:%s" style="color:#cbd5e1;text-decoration:none;">%s</a>
                               </td>
                             </tr>
                           </table>
@@ -213,6 +220,7 @@ public class EmailDeliveryService {
                   </body>
                 </html>
                 """.formatted(
+                escapeHtml(title),
                 escapeHtml(companyName),
                 safeLogo,
                 escapeHtml(heading),
@@ -222,6 +230,7 @@ public class EmailDeliveryService {
                 fallback,
                 escapeHtml(footNote),
                 escapeHtml(companyName),
+                safeSupport,
                 safeSupport
         );
     }
