@@ -5,11 +5,13 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.servlet.HandlerMapping;
 import org.springframework.web.util.ContentCachingRequestWrapper;
 import org.springframework.web.util.ContentCachingResponseWrapper;
 
@@ -62,60 +64,81 @@ public class HttpRequestResponseLoggingFilter extends OncePerRequestFilter {
             requestId = UUID.randomUUID().toString().replace("-", "");
         }
         wrappedResponse.setHeader("X-Request-Id", requestId);
+        MDC.put("rid", requestId);
 
-        long startedAt = System.nanoTime();
-        String method = wrappedRequest.getMethod();
-        String path = wrappedRequest.getRequestURI();
-        String query = wrappedRequest.getQueryString();
-
-        log.info(
-                "HTTP_REQ_START rid={} method={} path={} query={} origin={} ip={} ua={} contentType={} contentLength={}",
-                requestId,
-                method,
-                path,
-                query == null ? "" : query,
-                safeHeader(wrappedRequest, "Origin"),
-                clientIp(wrappedRequest),
-                truncate(safeHeader(wrappedRequest, "User-Agent"), 200),
-                wrappedRequest.getContentType(),
-                wrappedRequest.getContentLengthLong()
-        );
-
-        Throwable failure = null;
         try {
-            filterChain.doFilter(wrappedRequest, wrappedResponse);
-        } catch (Throwable t) {
-            failure = t;
-            throw t;
-        } finally {
-            long durationMs = (System.nanoTime() - startedAt) / 1_000_000L;
-            int status = wrappedResponse.getStatus();
-            int reqBytes = wrappedRequest.getContentAsByteArray().length;
-            int resBytes = wrappedResponse.getContentAsByteArray().length;
+            long startedAt = System.nanoTime();
+            String method = wrappedRequest.getMethod();
+            String path = wrappedRequest.getRequestURI();
+            String query = wrappedRequest.getQueryString();
+            String loggedPath = sanitizePath(path);
+            String loggedQuery = sanitizeQuery(query);
+            String origin = safeHeader(wrappedRequest, "Origin");
+            String requestIp = clientIp(wrappedRequest);
+            String userAgent = truncate(safeHeader(wrappedRequest, "User-Agent"), 200);
+            String contentType = wrappedRequest.getContentType();
+            long contentLength = wrappedRequest.getContentLengthLong();
 
-            if (failure == null) {
-                log.info(
-                        "HTTP_REQ_END rid={} method={} path={} status={} durationMs={} reqBytes={} resBytes={}",
-                        requestId, method, path, status, durationMs, reqBytes, resBytes
-                );
-            } else {
-                log.error(
-                        "HTTP_REQ_ERROR rid={} method={} path={} status={} durationMs={} errorType={} errorMessage={}",
+            if (log.isDebugEnabled()) {
+                log.debug(
+                        "HTTP_REQ_START rid={} method={} path={} query={} origin={} ip={} ua={} contentType={} contentLength={}",
                         requestId,
                         method,
-                        path,
-                        status,
-                        durationMs,
-                        failure.getClass().getSimpleName(),
-                        failure.getMessage()
+                        loggedPath,
+                        loggedQuery,
+                        origin,
+                        requestIp,
+                        userAgent,
+                        contentType,
+                        contentLength
                 );
             }
 
-            if (includeBody) {
-                logBodies(requestId, wrappedRequest, wrappedResponse);
-            }
+            Throwable failure = null;
+            try {
+                filterChain.doFilter(wrappedRequest, wrappedResponse);
+            } catch (Throwable t) {
+                failure = t;
+                throw t;
+            } finally {
+                long durationMs = (System.nanoTime() - startedAt) / 1_000_000L;
+                int status = wrappedResponse.getStatus();
+                int reqBytes = wrappedRequest.getContentAsByteArray().length;
+                int resBytes = wrappedResponse.getContentAsByteArray().length;
+                String routePattern = resolveRoutePattern(wrappedRequest, loggedPath);
 
-            wrappedResponse.copyBodyToResponse();
+                if (failure != null || status >= 500) {
+                    String errorType = failure == null ? "" : failure.getClass().getSimpleName();
+                    String errorMessage = failure == null || failure.getMessage() == null
+                            ? ""
+                            : truncate(failure.getMessage(), 300);
+                    log.error(
+                            "HTTP_ACCESS rid={} method={} path={} route={} query={} status={} durationMs={} ip={} origin={} reqBytes={} resBytes={} ua={} errorType={} errorMessage={}",
+                            requestId, method, loggedPath, routePattern, loggedQuery, status, durationMs, requestIp,
+                            origin, reqBytes, resBytes, userAgent, errorType, errorMessage
+                    );
+                } else if (status >= 400) {
+                    log.warn(
+                            "HTTP_ACCESS rid={} method={} path={} route={} query={} status={} durationMs={} ip={} origin={} reqBytes={} resBytes={} ua={}",
+                            requestId, method, loggedPath, routePattern, loggedQuery, status, durationMs, requestIp,
+                            origin, reqBytes, resBytes, userAgent
+                    );
+                } else {
+                    log.info(
+                            "HTTP_ACCESS rid={} method={} path={} route={} query={} status={} durationMs={} ip={} origin={} reqBytes={} resBytes={} ua={}",
+                            requestId, method, loggedPath, routePattern, loggedQuery, status, durationMs, requestIp,
+                            origin, reqBytes, resBytes, userAgent
+                    );
+                }
+
+                if (includeBody) {
+                    logBodies(requestId, wrappedRequest, wrappedResponse);
+                }
+
+                wrappedResponse.copyBodyToResponse();
+            }
+        } finally {
+            MDC.remove("rid");
         }
     }
 
@@ -130,14 +153,41 @@ public class HttpRequestResponseLoggingFilter extends OncePerRequestFilter {
         if (isTextContent(reqContentType)) {
             String reqBody = new String(request.getContentAsByteArray(), StandardCharsets.UTF_8);
             reqBody = sanitizeSensitive(reqBody);
-            log.info("HTTP_REQ_BODY rid={} body={}", requestId, truncate(reqBody, maxBodyChars));
+            log.debug("HTTP_REQ_BODY rid={} body={}", requestId, truncate(reqBody, maxBodyChars));
         }
 
         if (isTextContent(resContentType)) {
             String resBody = new String(response.getContentAsByteArray(), StandardCharsets.UTF_8);
             resBody = sanitizeSensitive(resBody);
-            log.info("HTTP_RES_BODY rid={} body={}", requestId, truncate(resBody, maxBodyChars));
+            log.debug("HTTP_RES_BODY rid={} body={}", requestId, truncate(resBody, maxBodyChars));
         }
+    }
+
+    private String resolveRoutePattern(HttpServletRequest request, String fallbackPath) {
+        Object pattern = request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
+        if (pattern == null) {
+            return fallbackPath;
+        }
+        String route = pattern.toString();
+        return route.isBlank() ? fallbackPath : route;
+    }
+
+    private String sanitizePath(String path) {
+        if (path == null || path.isBlank()) {
+            return "";
+        }
+        return path.replaceAll("(?i)(/verify/)[^/?]+", "$1***");
+    }
+
+    private String sanitizeQuery(String query) {
+        if (query == null || query.isBlank()) {
+            return "";
+        }
+        return query
+                .replaceAll("(?i)(token=)[^&]*", "$1***")
+                .replaceAll("(?i)(password=)[^&]*", "$1***")
+                .replaceAll("(?i)(newPassword=)[^&]*", "$1***")
+                .replaceAll("(?i)(currentPassword=)[^&]*", "$1***");
     }
 
     private boolean isTextContent(String contentType) {

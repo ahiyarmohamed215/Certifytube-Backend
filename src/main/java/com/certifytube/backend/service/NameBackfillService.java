@@ -69,7 +69,7 @@ public class NameBackfillService {
         }
 
         log.info(
-                "Name backfill completed: usersUpdated={}, certificatesUpdated={}",
+                "name-backfill.completed usersUpdated={} certificatesUpdated={}",
                 userUpdates.size(),
                 certificateUpdates.size()
         );

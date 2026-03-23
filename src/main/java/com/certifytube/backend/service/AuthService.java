@@ -68,7 +68,7 @@ public class AuthService {
         long flowStartedAt = System.nanoTime();
         String email = req.getEmail().trim().toLowerCase();
         String name = req.getName().trim();
-        log.info("AUTH_SIGNUP_FLOW_START email={}", maskEmail(email));
+        log.debug("auth.signup.start email={}", maskEmail(email));
 
         if (name.length() < 2 || name.length() > 255) {
             throw new IllegalArgumentException("Name must be between 2 and 255 characters");
@@ -76,7 +76,7 @@ public class AuthService {
 
         long duplicateCheckStartedAt = System.nanoTime();
         UserAccount existing = userAccountRepository.findByEmail(email).orElse(null);
-        log.info("AUTH_SIGNUP_DUPLICATE_CHECK email={} existing={} verified={} durationMs={}",
+        log.debug("auth.signup.duplicate-check email={} existing={} verified={} durationMs={}",
                 maskEmail(email),
                 existing != null,
                 existing != null ? existing.getEmailVerified() : null,
@@ -92,7 +92,7 @@ public class AuthService {
         LocalDateTime now = LocalDateTime.now();
         long passwordEncodeStartedAt = System.nanoTime();
         String passwordHash = passwordEncoder.encode(req.getPassword());
-        log.info("AUTH_SIGNUP_PASSWORD_ENCODED email={} durationMs={}", maskEmail(email), elapsedMs(passwordEncodeStartedAt));
+        log.debug("auth.signup.password-hash.done email={} durationMs={}", maskEmail(email), elapsedMs(passwordEncodeStartedAt));
 
         UserAccount user;
         long saveStartedAt = System.nanoTime();
@@ -114,28 +114,28 @@ public class AuthService {
             existing.setEmailVerifiedAtUtc(null);
             user = userAccountRepository.save(existing);
         }
-        log.info("AUTH_SIGNUP_USER_SAVED email={} userId={} durationMs={}",
+        log.debug("auth.signup.user.persisted email={} userId={} durationMs={}",
                 maskEmail(email), user.getId(), elapsedMs(saveStartedAt));
 
         long tokenStartedAt = System.nanoTime();
         String verifyToken = createAndStoreEmailVerificationToken(user.getId(), now);
-        log.info("AUTH_SIGNUP_VERIFY_TOKEN_CREATED email={} durationMs={}", maskEmail(email), elapsedMs(tokenStartedAt));
+        log.debug("auth.signup.verify-token.created email={} durationMs={}", maskEmail(email), elapsedMs(tokenStartedAt));
 
         if (signupSendVerificationEmail) {
             long emailDispatchStartedAt = System.nanoTime();
             try {
                 emailDeliveryService.sendEmailVerification(user.getEmail(), verifyToken);
-                log.info("AUTH_SIGNUP_EMAIL_DISPATCH_QUEUED email={} durationMs={}",
+                log.debug("auth.signup.email.dispatch.queued email={} durationMs={}",
                         maskEmail(email), elapsedMs(emailDispatchStartedAt));
             } catch (Exception ex) {
                 if (signupFailOnEmailError) {
                     throw ex;
                 }
-                log.warn("AUTH_SIGNUP_EMAIL_DISPATCH_FAILED_NON_BLOCKING email={} reason={}",
+                log.warn("auth.signup.email.dispatch.failed nonBlocking=true email={} reason={}",
                         maskEmail(email), ex.getMessage());
             }
         } else {
-            log.warn("AUTH_SIGNUP_EMAIL_DISPATCH_SKIPPED email={} reason=auth.signup.send-verification-email=false",
+            log.warn("auth.signup.email.dispatch.skipped email={} reason=auth.signup.send-verification-email=false",
                     maskEmail(email));
         }
 
@@ -143,7 +143,7 @@ public class AuthService {
         response.setToken(null);
         response.setTokenType(null);
         response.setMessage("Signup successful. Please verify your email to continue.");
-        log.info("AUTH_SIGNUP_FLOW_DONE email={} userId={} totalDurationMs={}",
+        log.info("auth.signup.completed email={} userId={} durationMs={}",
                 maskEmail(email), user.getId(), elapsedMs(flowStartedAt));
         return response;
     }
@@ -152,19 +152,19 @@ public class AuthService {
     public AuthResponse login(LoginRequest req) {
         long flowStartedAt = System.nanoTime();
         String email = req.getEmail().trim().toLowerCase();
-        log.info("AUTH_LOGIN_FLOW_START email={}", maskEmail(email));
+        log.debug("auth.login.start email={}", maskEmail(email));
 
         long findUserStartedAt = System.nanoTime();
         UserAccount user = userAccountRepository.findByEmail(email)
                 .orElseThrow(() -> new IllegalArgumentException("Invalid email or password"));
-        log.info("AUTH_LOGIN_USER_FOUND email={} userId={} durationMs={}",
+        log.debug("auth.login.user.loaded email={} userId={} durationMs={}",
                 maskEmail(email), user.getId(), elapsedMs(findUserStartedAt));
 
         long passwordCheckStartedAt = System.nanoTime();
         if (!passwordEncoder.matches(req.getPassword(), user.getPasswordHash())) {
             throw new IllegalArgumentException("Invalid email or password");
         }
-        log.info("AUTH_LOGIN_PASSWORD_VERIFIED email={} durationMs={}", maskEmail(email), elapsedMs(passwordCheckStartedAt));
+        log.debug("auth.login.password.verified email={} durationMs={}", maskEmail(email), elapsedMs(passwordCheckStartedAt));
 
         if (Boolean.FALSE.equals(user.getActive())) {
             throw new IllegalStateException("Account is deactivated. Contact support.");
@@ -175,12 +175,12 @@ public class AuthService {
 
         long tokenStartedAt = System.nanoTime();
         String token = jwtService.generateToken(user.getEmail(), user.getRole().name());
-        log.info("AUTH_LOGIN_TOKEN_GENERATED email={} durationMs={}", maskEmail(email), elapsedMs(tokenStartedAt));
+        log.debug("auth.login.token.generated email={} durationMs={}", maskEmail(email), elapsedMs(tokenStartedAt));
 
         AuthResponse response = userAccountMapper.toAuthResponse(user);
         response.setToken(token);
         response.setTokenType("Bearer");
-        log.info("AUTH_LOGIN_FLOW_DONE email={} userId={} totalDurationMs={}",
+        log.info("auth.login.completed email={} userId={} durationMs={}",
                 maskEmail(email), user.getId(), elapsedMs(flowStartedAt));
         return response;
     }

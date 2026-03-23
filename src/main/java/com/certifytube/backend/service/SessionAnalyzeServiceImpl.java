@@ -160,7 +160,7 @@ public class SessionAnalyzeServiceImpl implements SessionAnalyzeService {
 
         // 4) Save ML result
         try {
-            EngagementResult saved = engagementResultRepository.save(EngagementResult.builder()
+            engagementResultRepository.save(EngagementResult.builder()
                     .sessionId(sessionId)
                     .modelUsed(resolvedModel)
                     .engagementScore(score)
@@ -171,7 +171,8 @@ public class SessionAnalyzeServiceImpl implements SessionAnalyzeService {
                     .topNegativeJson(mapper.writeValueAsString(topNegative))
                     .createdAtUtc(LocalDateTime.now())
                     .build());
-            log.info("Saved EngagementResult to DB with score={} and status={} for session={}", score, status, sessionId);
+            log.info("session.analyze.completed sessionId={} model={} status={} score={}",
+                    sessionId, resolvedModel, status, score);
         } catch (Exception e) {
             throw new RuntimeException("Failed to save ML engagement result", e);
         }

@@ -131,7 +131,7 @@ public class SessionEventServiceImpl implements SessionEventService {
 
         if (!entities.isEmpty()) {
             eventRepository.saveAll(entities);
-            log.info("Saved {} session events to database", entities.size());
+            log.debug("session.events.saved count={}", entities.size());
         }
 
         // Update session progress (lastPositionSec + videoDurationSec)
@@ -149,7 +149,7 @@ public class SessionEventServiceImpl implements SessionEventService {
             }
         }
         if (updatedSessions > 0) {
-            log.info("Updated progress for {} sessions in database", updatedSessions);
+            log.debug("session.progress.updated sessions={}", updatedSessions);
         }
 
         return EventBatchResponse.builder()

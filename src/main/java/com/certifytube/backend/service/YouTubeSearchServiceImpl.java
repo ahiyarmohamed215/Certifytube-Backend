@@ -105,14 +105,14 @@ public class YouTubeSearchServiceImpl implements YouTubeSearchService {
             return cache;
         }
 
-        log.info("Fetching from YouTube API for query: {}", normalizedQuery);
+        log.debug("youtube.search.refresh.start query={}", normalizedQuery);
         List<YouTubeVideoDto> fetched;
         try {
             String rawJson = youTubeClient.searchVideos(normalizedQuery, MAX_VIDEOS_PER_QUERY);
             fetched = mapSearchVideos(rawJson);
         } catch (RuntimeException ex) {
             if (!existingItems.isEmpty()) {
-                log.warn("YouTube refresh failed for query '{}'; serving stale cache. Reason: {}", normalizedQuery,
+                log.warn("youtube.search.refresh.failed query={} fallback=stale-cache reason={}", normalizedQuery,
                         ex.getMessage());
                 return cache;
             }
@@ -323,7 +323,7 @@ public class YouTubeSearchServiceImpl implements YouTubeSearchService {
                 }
             }
         } catch (Exception e) {
-            log.warn("Failed to enrich video category IDs: {}", e.getMessage());
+            log.warn("youtube.search.category-enrich.failed reason={}", e.getMessage());
         }
     }
 

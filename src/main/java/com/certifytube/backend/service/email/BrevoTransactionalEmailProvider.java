@@ -34,7 +34,7 @@ public class BrevoTransactionalEmailProvider implements TransactionalEmailProvid
     public void send(TransactionalEmailMessage message) {
         long startedAt = System.nanoTime();
         String toMasked = maskEmail(message.toEmail());
-        log.info("MAIL_PROVIDER_SEND_REQUEST_STARTED provider=brevo to={}", toMasked);
+        log.debug("mail.provider.brevo.send.start to={}", toMasked);
 
         String apiKey = trimToEmpty(brevoApiKey);
         String sender = trimToEmpty(senderEmail);
@@ -74,12 +74,12 @@ public class BrevoTransactionalEmailProvider implements TransactionalEmailProvid
                     .defaultIfEmpty("")
                     .block();
 
-            log.info("MAIL_PROVIDER_RESPONSE_SUCCESS provider=brevo to={} durationMs={} body={}",
+            log.debug("mail.provider.brevo.send.success to={} durationMs={} responseBytes={}",
                     toMasked,
                     elapsedMs(startedAt),
-                    truncate(responseBody, 500));
+                    responseBody == null ? 0 : responseBody.length());
         } catch (Exception ex) {
-            log.error("MAIL_PROVIDER_RESPONSE_FAILURE provider=brevo to={} durationMs={} reason={}",
+            log.error("mail.provider.brevo.send.failed to={} durationMs={} reason={}",
                     toMasked,
                     elapsedMs(startedAt),
                     ex.getMessage(),

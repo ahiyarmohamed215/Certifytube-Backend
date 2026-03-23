@@ -39,7 +39,7 @@ public class EmailDeliveryService {
     @Async("mailTaskExecutor")
     public void sendEmailVerification(String toEmail, String rawToken) {
         long startedAt = System.nanoTime();
-        log.info("MAIL_VERIFY_START to={}", maskEmail(toEmail));
+        log.debug("mail.verify.start to={}", maskEmail(toEmail));
         String frontendBase = normalizedBaseUrl(frontendBaseUrl, "app.frontend-base-url");
         warnIfLocalBase(frontendBase, "app.frontend-base-url");
 
@@ -71,9 +71,9 @@ public class EmailDeliveryService {
 
         try {
             sendMail(toEmail, subject, plainText, html);
-            log.info("MAIL_VERIFY_DONE to={} durationMs={}", maskEmail(toEmail), elapsedMs(startedAt));
+            log.debug("mail.verify.sent to={} durationMs={}", maskEmail(toEmail), elapsedMs(startedAt));
         } catch (Exception ex) {
-            log.error("MAIL_VERIFY_FAILED to={} durationMs={} reason={}",
+            log.error("mail.verify.failed to={} durationMs={} reason={}",
                     maskEmail(toEmail),
                     elapsedMs(startedAt),
                     ex.getMessage(),
@@ -84,7 +84,7 @@ public class EmailDeliveryService {
     @Async("mailTaskExecutor")
     public void sendPasswordReset(String toEmail, String rawToken) {
         long startedAt = System.nanoTime();
-        log.info("MAIL_RESET_START to={}", maskEmail(toEmail));
+        log.debug("mail.reset.start to={}", maskEmail(toEmail));
         String frontendBase = normalizedBaseUrl(frontendBaseUrl, "app.frontend-base-url");
         warnIfLocalBase(frontendBase, "app.frontend-base-url");
 
@@ -113,9 +113,9 @@ public class EmailDeliveryService {
 
         try {
             sendMail(toEmail, subject, plainText, html);
-            log.info("MAIL_RESET_DONE to={} durationMs={}", maskEmail(toEmail), elapsedMs(startedAt));
+            log.debug("mail.reset.sent to={} durationMs={}", maskEmail(toEmail), elapsedMs(startedAt));
         } catch (Exception ex) {
-            log.error("MAIL_RESET_FAILED to={} durationMs={} reason={}",
+            log.error("mail.reset.failed to={} durationMs={} reason={}",
                     maskEmail(toEmail),
                     elapsedMs(startedAt),
                     ex.getMessage(),

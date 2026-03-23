@@ -33,7 +33,7 @@ public class YouTubeClient {
         String envKey = environment.getProperty("YOUTUBE_API_KEY");
         String source = (envKey != null && !envKey.isBlank()) ? "env:YOUTUBE_API_KEY" : "application.properties";
         String key = youtubeApiKey == null ? "" : youtubeApiKey.trim();
-        log.info("YouTube API key source: {}, key: {}", source, maskKey(key));
+        log.debug("youtube.api-key.configured source={} present={}", source, !key.isBlank());
     }
 
     private WebClient client() {
@@ -95,11 +95,4 @@ public class YouTubeClient {
                 .block();
     }
 
-    private String maskKey(String key) {
-        if (key == null || key.isBlank())
-            return "<empty>";
-        if (key.length() <= 8)
-            return "****";
-        return key.substring(0, 4) + "..." + key.substring(key.length() - 4);
-    }
 }

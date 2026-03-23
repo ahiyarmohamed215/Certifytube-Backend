@@ -62,7 +62,7 @@ public class MlServiceClient {
                                 "features", features);
 
                 String endpoint = "/engagement/analyze/" + model;
-                log.info("Calling ML engagement endpoint {} (sessionId={}, features={})", endpoint, sessionId,
+                log.debug("ml.engagement.request endpoint={} sessionId={} featureCount={}", endpoint, sessionId,
                                 features != null ? features.size() : 0);
 
                 try {
@@ -75,20 +75,20 @@ public class MlServiceClient {
                                         .bodyToMono(Map.class)
                                         .block();
                 } catch (WebClientResponseException e) {
-                        log.error("ML engagement error {} from {}{}: {}",
+                        log.error("ml.engagement.failed status={} endpoint={}{} reason={}",
                                         e.getStatusCode().value(), mlBaseUrl, endpoint, e.getResponseBodyAsString());
                         throw new IllegalStateException(
                                         "ML service rejected engagement request (HTTP %d). Verify model endpoint and payload."
                                                         .formatted(e.getStatusCode().value()),
                                         e);
                 } catch (WebClientRequestException e) {
-                        log.error("ML engagement request failed to {}{}: {}", mlBaseUrl, endpoint, e.getMessage());
+                        log.error("ml.engagement.unreachable endpoint={}{} reason={}", mlBaseUrl, endpoint, e.getMessage());
                         throw new IllegalStateException(
                                         "Cannot reach ML service at %s. Set ML_BASE_URL to a reachable ML API."
                                                         .formatted(mlBaseUrl),
                                         e);
                 } catch (RuntimeException e) {
-                        log.error("Unexpected ML engagement failure for {}{}: {}", mlBaseUrl, endpoint, e.getMessage());
+                        log.error("ml.engagement.unexpected endpoint={}{} reason={}", mlBaseUrl, endpoint, e.getMessage());
                         throw new IllegalStateException(
                                         "ML engagement request timed out or failed unexpectedly. Check ML service health and ML_BASE_URL.",
                                         e);
@@ -121,7 +121,12 @@ public class MlServiceClient {
                 payload.put("video_id", videoId);
                 payload.put("video_duration_sec", videoDurationSec);
 
-                log.info("Sending payload to ML service /quiz/generate: {}", payload);
+                log.debug("ml.quiz.request endpoint=/quiz/generate sessionId={} videoId={} durationSec={} numQuestions={} includeCoding={}",
+                                sessionId,
+                                videoId,
+                                videoDurationSec,
+                                numQuestions,
+                                includeCoding);
 
                 try {
                         return client()
@@ -133,10 +138,10 @@ public class MlServiceClient {
                                         .bodyToMono(Map.class)
                                         .block();
                 } catch (WebClientResponseException e) {
-                        log.error("ML Service quiz generate error {}: {}", e.getStatusCode(), e.getResponseBodyAsString());
+                        log.error("ml.quiz.failed status={} reason={}", e.getStatusCode().value(), e.getResponseBodyAsString());
                         throw e;
                 } catch (WebClientRequestException e) {
-                        log.error("ML service quiz generate request failed: {}", e.getMessage());
+                        log.error("ml.quiz.unreachable endpoint={}{} reason={}", mlBaseUrl, "/quiz/generate", e.getMessage());
                         throw new IllegalStateException(
                                         "Cannot reach ML service at %s. Set ML_BASE_URL to a reachable ML API."
                                                         .formatted(mlBaseUrl),

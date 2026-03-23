@@ -183,7 +183,7 @@ public class QuizService {
         Optional<Quiz> recentQuiz = quizRepository.findTopBySessionIdAndUserIdOrderByCreatedAtUtcDesc(
                 session.getSessionId(), user.getId());
         if (recentQuiz.isPresent()) {
-            log.info("Returning already generated quiz={} for session={}", recentQuiz.get().getQuizId(), session.getSessionId());
+            log.debug("quiz.generate.reused quizId={} sessionId={}", recentQuiz.get().getQuizId(), session.getSessionId());
             return getQuizForCurrentUser(recentQuiz.get().getQuizId());
         }
 
@@ -220,7 +220,6 @@ public class QuizService {
                 .totalQuestions(drafts.size())
                 .createdAtUtc(LocalDateTime.now())
                 .build());
-        log.info("Saved Quiz generated for session={} into DB", session.getSessionId());
 
         int pos = 1;
         for (QuestionDraft d : drafts) {
@@ -235,7 +234,10 @@ public class QuizService {
                     .explanationText(d.explanation())
                     .build());
         }
-        log.info("Saved {} QuizQuestions into DB for quizId={}", drafts.size(), quiz.getQuizId());
+        log.info("quiz.generate.completed quizId={} sessionId={} questionCount={}",
+                quiz.getQuizId(),
+                session.getSessionId(),
+                drafts.size());
 
         return getQuizForCurrentUser(quiz.getQuizId());
     }
@@ -314,7 +316,11 @@ public class QuizService {
                 .passedFlag(passed)
                 .createdAtUtc(LocalDateTime.now())
                 .build());
-        log.info("Saved QuizAttempt for session={} to DB: passed={}, score={}", quiz.getSessionId(), passed, score);
+        log.info("quiz.submit.completed quizId={} sessionId={} passed={} scorePercent={}",
+                quizId,
+                quiz.getSessionId(),
+                passed,
+                score);
 
         String certId = null;
         String verifyLink = null;

@@ -97,7 +97,9 @@ public class CertificateService {
                     cert.setPdfBytes(pdfBytes);
                     certificateRepository.save(cert);
 
-                    log.info("Issued and saved new Certificate={} to DB for session={}", cert.getCertificateId(), sessionId);
+                    log.info("certificate.issue.completed certificateId={} sessionId={}",
+                            cert.getCertificateId(),
+                            sessionId);
                     return cert;
                 });
     }
@@ -132,7 +134,7 @@ public class CertificateService {
             throw new AccessDeniedException("Certificate does not belong to authenticated user");
         }
         certificateRepository.delete(cert);
-        log.info("User {} deleted certificate {}", userId, certificateId);
+        log.info("certificate.delete.completed userId={} certificateId={}", userId, certificateId);
     }
 
     /* ─────────────────── Verify (public) ─────────────────── */
@@ -155,7 +157,7 @@ public class CertificateService {
         }
         cert.setStatus("REVOKED");
         certificateRepository.save(cert);
-        log.info("Admin revoked Certificate={}", certificateId);
+        log.info("certificate.revoke.completed certificateId={}", certificateId);
     }
 
     @Transactional
@@ -167,7 +169,7 @@ public class CertificateService {
         }
         cert.setStatus("ACTIVE");
         certificateRepository.save(cert);
-        log.info("Admin activated Certificate={}", certificateId);
+        log.info("certificate.activate.completed certificateId={}", certificateId);
     }
 
     /* ─────────────────── DTO mapping ─────────────────── */
@@ -402,7 +404,7 @@ public class CertificateService {
                     cs.showText("CertifyTube Official Seal");
                     cs.endText();
                 } catch (Exception e) {
-                    log.warn("Could not load seal image, skipping: {}", e.getMessage());
+                    log.warn("certificate.pdf.seal.load-failed reason={}", e.getMessage());
                 }
 
                 // ──── 10. Verification signature lines (left of seal) ────
@@ -457,7 +459,7 @@ public class CertificateService {
                     cs.showText("Scan to verify certificate");
                     cs.endText();
                 } catch (Exception e) {
-                    log.error("Failed to generate QR code", e);
+                    log.error("certificate.pdf.qr.generate-failed reason={}", e.getMessage(), e);
                 }
 
                 // ──── 13. Platform branding (top right) ────

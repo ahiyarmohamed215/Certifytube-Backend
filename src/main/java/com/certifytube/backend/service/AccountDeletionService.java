@@ -67,6 +67,9 @@ public class AccountDeletionService {
         passwordResetTokenRepository.deleteByUserId(userId);
         emailVerificationTokenRepository.deleteByUserId(userId);
         userAccountRepository.deleteById(userId);
-        log.info("Deleted account and owned data for userId={}", userId);
+        log.info("account.delete.completed userId={} sessions={} quizzes={}",
+                userId,
+                sessions.size(),
+                quizzes.size());
     }
 }

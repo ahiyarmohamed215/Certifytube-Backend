@@ -18,10 +18,8 @@ import com.certifytube.backend.service.AuthService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
-@Slf4j
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/auth")
@@ -34,22 +32,12 @@ public class AuthController {
 
     @PostMapping("/signup")
     public AuthResponse signUp(@Valid @RequestBody SignUpRequest req) {
-        long startedAt = System.nanoTime();
-        String maskedEmail = maskEmail(req.getEmail());
-        log.info("AUTH_SIGNUP_REQUEST_START email={}", maskedEmail);
-        AuthResponse response = authService.signUp(req);
-        log.info("AUTH_SIGNUP_REQUEST_DONE email={} durationMs={}", maskedEmail, elapsedMs(startedAt));
-        return response;
+        return authService.signUp(req);
     }
 
     @PostMapping("/login")
     public AuthResponse login(@Valid @RequestBody LoginRequest req) {
-        long startedAt = System.nanoTime();
-        String maskedEmail = maskEmail(req.getEmail());
-        log.info("AUTH_LOGIN_REQUEST_START email={}", maskedEmail);
-        AuthResponse response = authService.login(req);
-        log.info("AUTH_LOGIN_REQUEST_DONE email={} durationMs={}", maskedEmail, elapsedMs(startedAt));
-        return response;
+        return authService.login(req);
     }
 
     @GetMapping("/me")
@@ -131,19 +119,4 @@ public class AuthController {
         return remote == null ? "" : remote;
     }
 
-    private String maskEmail(String email) {
-        if (email == null || email.isBlank()) {
-            return "<empty>";
-        }
-        String trimmed = email.trim().toLowerCase();
-        int at = trimmed.indexOf('@');
-        if (at <= 1) {
-            return "***";
-        }
-        return trimmed.charAt(0) + "***" + trimmed.substring(at);
-    }
-
-    private long elapsedMs(long startedAtNs) {
-        return (System.nanoTime() - startedAtNs) / 1_000_000L;
-    }
 }
