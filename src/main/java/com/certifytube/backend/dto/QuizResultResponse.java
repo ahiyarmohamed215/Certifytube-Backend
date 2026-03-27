@@ -17,6 +17,9 @@ public class QuizResultResponse {
     private String quizId;
     private int correctCount;
     private int totalCount;
+    private Integer answeredQuestions;
+    private Integer incorrectCount;
+    private Integer unansweredQuestions;
     private double scorePercent;
     private boolean passed;
     private String certificateId;

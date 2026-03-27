@@ -8,7 +8,6 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 
 @Getter
 @Setter
@@ -36,7 +35,6 @@ public class AdminLearnerProfileResponse {
         private LocalDateTime endedAtUtc;
         private Double lastPositionSec;
         private Double videoDurationSec;
-        private Map<String, Object> features;
         private AdminEngagementResponse engagement;
     }
 
@@ -69,6 +67,8 @@ public class AdminLearnerProfileResponse {
         private Double scorePercent;
         private Boolean passedFlag;
         private Object answers;
+        private Object review;
+        private Object mlResponse;
         private LocalDateTime createdAtUtc;
     }
 
@@ -84,7 +84,6 @@ public class AdminLearnerProfileResponse {
         private String questionType;
         private String questionText;
         private Object options;
-        private String correctAnswer;
         private String explanationText;
     }
 

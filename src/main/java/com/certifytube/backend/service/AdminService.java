@@ -2,6 +2,7 @@ package com.certifytube.backend.service;
 
 import com.certifytube.backend.dto.AdminEngagementResponse;
 import com.certifytube.backend.dto.AdminLearnerProfileResponse;
+import com.certifytube.backend.dto.AdminOverviewResponse;
 import com.certifytube.backend.dto.AdminUserSummaryDto;
 import com.certifytube.backend.model.Certificate;
 import com.certifytube.backend.model.EngagementResult;
@@ -15,10 +16,8 @@ import com.certifytube.backend.repository.EngagementResultRepository;
 import com.certifytube.backend.repository.QuizAttemptRepository;
 import com.certifytube.backend.repository.QuizQuestionRepository;
 import com.certifytube.backend.repository.QuizRepository;
-import com.certifytube.backend.repository.SessionFeaturesRepository;
 import com.certifytube.backend.repository.SessionRepository;
 import com.certifytube.backend.repository.UserAccountRepository;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
@@ -27,7 +26,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -35,7 +33,6 @@ public class AdminService {
 
     private final UserAccountRepository userAccountRepository;
     private final SessionRepository sessionRepository;
-    private final SessionFeaturesRepository sessionFeaturesRepository;
     private final CertificateRepository certificateRepository;
     private final QuizRepository quizRepository;
     private final QuizQuestionRepository quizQuestionRepository;
@@ -50,6 +47,26 @@ public class AdminService {
                 .stream()
                 .map(this::toUserSummary)
                 .toList();
+    }
+
+    public AdminOverviewResponse getOverview() {
+        long learnerCount = userAccountRepository.countByRole(Role.LEARNER);
+        long sessionCount = sessionRepository.count();
+        long activeSessionCount = sessionRepository.countByStatus("ACTIVE");
+        long completedSessionCount = sessionRepository.countByStatus("COMPLETED");
+        long quizPendingSessionCount = sessionRepository.countByStatus("QUIZ_PENDING");
+        long certifiedSessionCount = sessionRepository.countByStatus("CERTIFIED");
+        long certificateCount = certificateRepository.count();
+
+        return AdminOverviewResponse.builder()
+                .learnerCount(learnerCount)
+                .sessionCount(sessionCount)
+                .activeSessionCount(activeSessionCount)
+                .completedSessionCount(completedSessionCount)
+                .quizPendingSessionCount(quizPendingSessionCount)
+                .certifiedSessionCount(certifiedSessionCount)
+                .certificateCount(certificateCount)
+                .build();
     }
 
     public AdminLearnerProfileResponse getLearnerProfile(Long learnerId) {
@@ -96,13 +113,6 @@ public class AdminService {
     }
 
     private AdminLearnerProfileResponse.SessionInsight toSessionInsight(Session session) {
-        Map<String, Object> features = sessionFeaturesRepository.findTopBySessionIdOrderByCreatedAtUtcDesc(session.getSessionId())
-                .map(f -> objectMapper.convertValue(f, new TypeReference<Map<String, Object>>() {}))
-                .orElse(null);
-        if (features != null) {
-            features.remove("id");
-        }
-
         AdminEngagementResponse engagement = engagementResultRepository.findTopBySessionIdOrderByCreatedAtUtcDesc(session.getSessionId())
                 .map(this::toEngagementResponse)
                 .orElse(null);
@@ -117,7 +127,6 @@ public class AdminService {
                 .endedAtUtc(session.getEndedAtUtc())
                 .lastPositionSec(session.getLastPositionSec())
                 .videoDurationSec(session.getVideoDurationSec())
-                .features(features)
                 .engagement(engagement)
                 .build();
     }
@@ -132,7 +141,6 @@ public class AdminService {
                         .questionType(q.getQuestionType())
                         .questionText(q.getQuestionText())
                         .options(deserializeJson(q.getOptionsJson()))
-                        .correctAnswer(q.getCorrectAnswer())
                         .explanationText(q.getExplanationText())
                         .build())
                 .toList();
@@ -146,6 +154,8 @@ public class AdminService {
                         .scorePercent(a.getScorePercent())
                         .passedFlag(a.getPassedFlag())
                         .answers(deserializeJson(a.getAnswersJson()))
+                        .review(deserializeJson(a.getReviewJson()))
+                        .mlResponse(deserializeJson(a.getMlResponseJson()))
                         .createdAtUtc(a.getCreatedAtUtc())
                         .build())
                 .orElse(null);

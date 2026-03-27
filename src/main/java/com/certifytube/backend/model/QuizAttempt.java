@@ -43,6 +43,14 @@ public class QuizAttempt {
     @Column(name = "passed_flag", nullable = false)
     private Boolean passedFlag;
 
+    @Lob
+    @Column(name = "review_json", columnDefinition = "LONGTEXT")
+    private String reviewJson;
+
+    @Lob
+    @Column(name = "ml_response_json", columnDefinition = "LONGTEXT")
+    private String mlResponseJson;
+
     @Column(name = "created_at_utc", nullable = false)
     private LocalDateTime createdAtUtc;
 }

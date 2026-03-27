@@ -10,7 +10,6 @@ import com.certifytube.backend.repository.QuizAttemptRepository;
 import com.certifytube.backend.repository.QuizQuestionRepository;
 import com.certifytube.backend.repository.QuizRepository;
 import com.certifytube.backend.repository.SessionEventRepository;
-import com.certifytube.backend.repository.SessionFeaturesRepository;
 import com.certifytube.backend.repository.SessionRepository;
 import com.certifytube.backend.repository.UserAccountRepository;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +31,6 @@ public class AccountDeletionService {
     private final QuizAttemptRepository quizAttemptRepository;
     private final SessionRepository sessionRepository;
     private final SessionEventRepository sessionEventRepository;
-    private final SessionFeaturesRepository sessionFeaturesRepository;
     private final EngagementResultRepository engagementResultRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final EmailVerificationTokenRepository emailVerificationTokenRepository;
@@ -57,7 +55,6 @@ public class AccountDeletionService {
         for (Session session : sessions) {
             String sessionId = session.getSessionId();
             sessionEventRepository.deleteBySessionId(sessionId);
-            sessionFeaturesRepository.deleteBySessionId(sessionId);
             engagementResultRepository.deleteBySessionId(sessionId);
         }
         if (!sessions.isEmpty()) {

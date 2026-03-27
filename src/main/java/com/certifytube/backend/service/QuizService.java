@@ -1,9 +1,29 @@
 package com.certifytube.backend.service;
 
 import com.certifytube.backend.client.MlServiceClient;
-import com.certifytube.backend.dto.*;
-import com.certifytube.backend.model.*;
-import com.certifytube.backend.repository.*;
+import com.certifytube.backend.dto.QuizEligibilityResponse;
+import com.certifytube.backend.dto.QuizGenerateRequest;
+import com.certifytube.backend.dto.QuizQuestionDto;
+import com.certifytube.backend.dto.QuizQuestionReviewDto;
+import com.certifytube.backend.dto.QuizResponse;
+import com.certifytube.backend.dto.QuizResultResponse;
+import com.certifytube.backend.dto.QuizSubmitRequest;
+import com.certifytube.backend.model.Certificate;
+import com.certifytube.backend.model.EngagementResult;
+import com.certifytube.backend.model.Quiz;
+import com.certifytube.backend.model.QuizAttempt;
+import com.certifytube.backend.model.QuizQuestion;
+import com.certifytube.backend.model.Session;
+import com.certifytube.backend.model.SessionEvent;
+import com.certifytube.backend.model.UserAccount;
+import com.certifytube.backend.model.YouTubeVideoCache;
+import com.certifytube.backend.repository.EngagementResultRepository;
+import com.certifytube.backend.repository.QuizAttemptRepository;
+import com.certifytube.backend.repository.QuizQuestionRepository;
+import com.certifytube.backend.repository.QuizRepository;
+import com.certifytube.backend.repository.SessionEventRepository;
+import com.certifytube.backend.repository.SessionRepository;
+import com.certifytube.backend.repository.YouTubeVideoCacheRepository;
 import com.certifytube.backend.util.StemCategoryUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -14,11 +34,15 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -36,16 +60,6 @@ public class QuizService {
     private final MlServiceClient mlServiceClient;
     private final YouTubeVideoCacheRepository videoCacheRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
-
-    private static final Pattern LETTER_CHOICE_PATTERN = Pattern.compile("^\\(?([a-z])\\)?(?:[\\).:\\-].*)?$");
-    private static final Pattern OPTION_PREFIX_PATTERN = Pattern.compile("^option\\s+([a-z])$");
-    private static final Pattern NUMBER_CHOICE_PATTERN = Pattern.compile("^\\(?([1-9][0-9]*)\\)?(?:[\\).:\\-].*)?$");
-
-    /**
-     * Idempotency window: if quiz was generated within this many seconds, return
-     * it.
-     */
-    private static final long IDEMPOTENCY_WINDOW_SEC = 60;
 
     @Value("${quiz.min-engagement-score:0.85}")
     private double minEngagementScore;
@@ -68,9 +82,7 @@ public class QuizService {
             throw new AccessDeniedException("Session does not belong to authenticated user");
         }
 
-        // --- STEM gate ---
-        boolean stemEligible = checkStemEligible(session.getVideoId());
-        if (!stemEligible) {
+        if (!checkStemEligible(session.getVideoId())) {
             return QuizEligibilityResponse.builder()
                     .sessionId(sessionId)
                     .eligible(false)
@@ -103,8 +115,7 @@ public class QuizService {
         }
 
         Double latestScore = latest.getEngagementScore();
-        boolean engagementPassed = latestScore != null && latestScore >= minEngagementScore;
-        if (!engagementPassed) {
+        if (latestScore == null || latestScore < minEngagementScore) {
             return QuizEligibilityResponse.builder()
                     .sessionId(sessionId)
                     .eligible(false)
@@ -153,70 +164,69 @@ public class QuizService {
         if (!Objects.equals(session.getUserId(), String.valueOf(user.getId()))) {
             throw new AccessDeniedException("Session does not belong to authenticated user");
         }
-
-        // --- STEM gate ---
         if (!checkStemEligible(session.getVideoId())) {
-            throw new IllegalStateException(
-                    "Only STEM-based skill videos are eligible for quiz and certification");
+            throw new IllegalStateException("Only STEM-based skill videos are eligible for quiz and certification");
         }
 
         EngagementResult latest = engagementResultRepository
                 .findTopBySessionIdOrderByCreatedAtUtcDesc(req.getSessionId())
                 .orElseThrow(() -> new IllegalStateException("Analyze session first"));
-
         if (latest.getEngagementScore() == null || latest.getEngagementScore() < minEngagementScore) {
             throw new IllegalStateException("Engagement score is below quiz eligibility threshold");
         }
 
-        LocalDateTime engagementWindowStart = latest.getCreatedAtUtc() == null ? LocalDateTime.MIN : latest.getCreatedAtUtc();
-        long failedAttemptsInWindow = quizAttemptRepository.countFailedAttemptsForSessionSince(
+        LocalDateTime windowStart = latest.getCreatedAtUtc() == null ? LocalDateTime.MIN : latest.getCreatedAtUtc();
+        long failedAttempts = quizAttemptRepository.countFailedAttemptsForSessionSince(
                 user.getId(),
                 session.getSessionId(),
-                engagementWindowStart);
-        if (failedAttemptsInWindow >= maxFailedAttempts) {
+                windowStart);
+        if (failedAttempts >= maxFailedAttempts) {
             throw new IllegalStateException(
                     "Maximum failed quiz attempts reached. Rewatch the video and analyze again (engagement >= "
                             + formatEngagementThresholdForMessage() + ") to unlock new attempts.");
         }
 
-        // --- Idempotency: return existing quiz if it exists for this session ---
         Optional<Quiz> recentQuiz = quizRepository.findTopBySessionIdAndUserIdOrderByCreatedAtUtcDesc(
-                session.getSessionId(), user.getId());
+                session.getSessionId(),
+                user.getId());
         if (recentQuiz.isPresent()) {
-            log.debug("quiz.generate.reused quizId={} sessionId={}", recentQuiz.get().getQuizId(), session.getSessionId());
             return getQuizForCurrentUser(recentQuiz.get().getQuizId());
         }
 
-        // Get video duration from events
-        double videoDurationSec = sessionEventRepository.findBySessionIdOrderByCreatedAtUtcAsc(req.getSessionId())
-                .stream()
-                .map(SessionEvent::getVideoDurationSec)
-                .filter(Objects::nonNull)
-                .mapToDouble(Double::doubleValue)
-                .max()
-                .orElse(0.0);
+        double duration = resolveVideoDurationSec(req.getSessionId(), session);
+        Map<String, Object> ml = mlServiceClient.generateQuiz(session.getSessionId(), session.getVideoId(), duration);
 
-        // Call ML server for quiz generation
-        Map<String, Object> ml = mlServiceClient.generateQuiz(
-                session.getSessionId(),
-                session.getVideoId(),
-                videoDurationSec,
-                session.getVideoTitle(),
-                req.getNumQuestions(),
-                req.getIncludeCoding());
+        String mlQuizId = str(ml.get("quiz_id"), null);
+        if (mlQuizId == null || mlQuizId.isBlank()) {
+            throw new IllegalStateException("ML quiz response has no quiz_id");
+        }
+
+        Optional<Quiz> existingByMlId = quizRepository.findById(mlQuizId);
+        if (existingByMlId.isPresent()) {
+            Quiz existing = existingByMlId.get();
+            if (!existing.getUserId().equals(user.getId())) {
+                throw new IllegalStateException("ML quiz_id is already linked to another user");
+            }
+            return getQuizForCurrentUser(existing.getQuizId());
+        }
 
         List<QuestionDraft> drafts = extractQuestions(ml);
         if (drafts.isEmpty()) {
             throw new IllegalStateException("ML quiz response has no questions");
         }
 
+        String difficulty = req.getDifficulty();
+        if (difficulty == null || difficulty.isBlank()) {
+            difficulty = drafts.stream().map(QuestionDraft::difficulty).filter(Objects::nonNull).findFirst().orElse("medium");
+        }
+
         Quiz quiz = quizRepository.save(Quiz.builder()
-                .quizId(UUID.randomUUID().toString())
+                .quizId(mlQuizId)
                 .sessionId(session.getSessionId())
                 .userId(user.getId())
                 .videoId(session.getVideoId())
                 .videoTitle(session.getVideoTitle())
-                .difficulty(req.getDifficulty() != null ? req.getDifficulty() : "medium")
+                .difficulty(difficulty)
                 .totalQuestions(drafts.size())
                 .createdAtUtc(LocalDateTime.now())
                 .build());
@@ -230,14 +240,10 @@ public class QuizService {
                     .questionType(d.questionType())
                     .questionText(d.questionText())
                     .optionsJson(writeJson(d.options()))
-                    .correctAnswer(d.correctAnswer())
-                    .explanationText(d.explanation())
+                    .correctAnswer("")
+                    .explanationText(blankToNull(d.explanation()))
                     .build());
         }
-        log.info("quiz.generate.completed quizId={} sessionId={} questionCount={}",
-                quiz.getQuizId(),
-                session.getSessionId(),
-                drafts.size());
 
         return getQuizForCurrentUser(quiz.getQuizId());
     }
@@ -286,12 +292,12 @@ public class QuizService {
             throw new IllegalStateException("Quiz already passed");
         }
 
-        LocalDateTime attemptWindowStart = resolveAttemptWindowStart(quiz.getSessionId());
-        long failedAttemptsInWindow = quizAttemptRepository.countFailedAttemptsForSessionSince(
+        LocalDateTime windowStart = resolveAttemptWindowStart(quiz.getSessionId());
+        long failedAttempts = quizAttemptRepository.countFailedAttemptsForSessionSince(
                 user.getId(),
                 quiz.getSessionId(),
-                attemptWindowStart);
-        if (failedAttemptsInWindow >= maxFailedAttempts) {
+                windowStart);
+        if (failedAttempts >= maxFailedAttempts) {
             throw new IllegalStateException(
                     "Maximum failed quiz attempts reached. Rewatch the video and analyze again (engagement >= "
                             + formatEngagementThresholdForMessage() + ") to unlock new attempts.");
@@ -299,28 +305,45 @@ public class QuizService {
 
         List<QuizQuestion> questions = quizQuestionRepository.findByQuizOrderByPositionIndexAsc(quiz);
         Map<String, String> providedAnswers = req.getAnswers() == null ? Map.of() : req.getAnswers();
-        List<QuizQuestionReviewDto> review = buildQuestionReview(questions, providedAnswers);
-        int total = review.size();
-        int correct = (int) review.stream().filter(QuizQuestionReviewDto::isCorrect).count();
+        if (providedAnswers.isEmpty()) {
+            throw new IllegalArgumentException("answers is required");
+        }
 
-        double score = total == 0 ? 0.0 : (correct * 100.0) / total;
+        Map<String, String> normalized = normalizeAnswersByQuestionId(providedAnswers, questions);
+        List<Map<String, Object>> mlAnswers = normalized.entrySet().stream().map(e -> {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("question_id", e.getKey());
+            row.put("answer", e.getValue());
+            return row;
+        }).toList();
+
+        Map<String, Object> ml = mlServiceClient.gradeQuiz(
+                quiz.getQuizId(),
+                quiz.getSessionId(),
+                quiz.getVideoId(),
+                mlAnswers);
+
+        int total = asInt(ml.get("total_questions"), questions.size());
+        int answered = asInt(ml.get("answered_questions"), normalized.size());
+        int correct = asInt(ml.get("correct_answers"), 0);
+        int incorrect = asInt(ml.get("incorrect_answers"), Math.max(answered - correct, 0));
+        int unanswered = asInt(ml.get("unanswered_questions"), Math.max(total - answered, 0));
+        double score = asDouble(ml.get("quiz_score_percent"));
         boolean passed = score >= passScore;
+        List<QuizQuestionReviewDto> review = buildReviewFromMlResults(ml.get("results"), questions, normalized);
 
         QuizAttempt attempt = quizAttemptRepository.save(QuizAttempt.builder()
                 .quiz(quiz)
                 .userId(user.getId())
-                .answersJson(writeJson(providedAnswers))
+                .answersJson(writeJson(normalized))
                 .correctCount(correct)
                 .totalCount(total)
                 .scorePercent(score)
                 .passedFlag(passed)
+                .reviewJson(writeJson(review))
+                .mlResponseJson(writeJson(ml))
                 .createdAtUtc(LocalDateTime.now())
                 .build());
-        log.info("quiz.submit.completed quizId={} sessionId={} passed={} scorePercent={}",
-                quizId,
-                quiz.getSessionId(),
-                passed,
-                score);
 
         String certId = null;
         String verifyLink = null;
@@ -329,7 +352,6 @@ public class QuizService {
             certId = cert.getCertificateId();
             verifyLink = publicBaseUrl + "/api/certificates/verify/" + cert.getVerificationToken();
 
-            // Update session status to CERTIFIED
             Session session = sessionRepository.findById(quiz.getSessionId()).orElse(null);
             if (session != null) {
                 session.setStatus("CERTIFIED");
@@ -341,6 +363,9 @@ public class QuizService {
                 .quizId(quizId)
                 .correctCount(correct)
                 .totalCount(total)
+                .answeredQuestions(answered)
+                .incorrectCount(incorrect)
+                .unansweredQuestions(unanswered)
                 .scorePercent(score)
                 .passed(passed)
                 .certificateId(certId)
@@ -352,7 +377,6 @@ public class QuizService {
     private LocalDateTime resolveAttemptWindowStart(String sessionId) {
         EngagementResult latest = engagementResultRepository.findTopBySessionIdOrderByCreatedAtUtcDesc(sessionId)
                 .orElseThrow(() -> new IllegalStateException("Analyze session first"));
-
         if (latest.getEngagementScore() == null || latest.getEngagementScore() < minEngagementScore) {
             throw new IllegalStateException("Engagement score is below quiz eligibility threshold");
         }
@@ -369,9 +393,20 @@ public class QuizService {
 
         QuizAttempt attempt = quizAttemptRepository.findTopByQuizAndUserIdOrderByCreatedAtUtcDesc(quiz, user.getId())
                 .orElseThrow(() -> new IllegalArgumentException("Quiz not submitted"));
+
         List<QuizQuestion> questions = quizQuestionRepository.findByQuizOrderByPositionIndexAsc(quiz);
-        Map<String, String> providedAnswers = readAnswers(attempt.getAnswersJson());
-        List<QuizQuestionReviewDto> review = buildQuestionReview(questions, providedAnswers);
+        List<QuizQuestionReviewDto> review = readReview(attempt.getReviewJson());
+        if (review.isEmpty()) {
+            review = buildFallbackReview(questions, readAnswers(attempt.getAnswersJson()));
+        }
+        int total = attempt.getTotalCount() == null ? 0 : attempt.getTotalCount();
+        int correct = attempt.getCorrectCount() == null ? 0 : attempt.getCorrectCount();
+        int answered = (int) review.stream().filter(r -> r.getSelectedAnswer() != null && !r.getSelectedAnswer().isBlank()).count();
+        if (answered == 0) {
+            answered = readAnswers(attempt.getAnswersJson()).size();
+        }
+        int unanswered = Math.max(total - answered, 0);
+        int incorrect = Math.max(answered - correct, 0);
 
         Certificate cert = null;
         if (attempt.getPassedFlag()) {
@@ -380,129 +415,217 @@ public class QuizService {
 
         return QuizResultResponse.builder()
                 .quizId(quizId)
-                .correctCount(attempt.getCorrectCount())
-                .totalCount(attempt.getTotalCount())
+                .correctCount(correct)
+                .totalCount(total)
+                .answeredQuestions(answered)
+                .incorrectCount(incorrect)
+                .unansweredQuestions(unanswered)
                 .scorePercent(attempt.getScorePercent())
                 .passed(Boolean.TRUE.equals(attempt.getPassedFlag()))
                 .certificateId(cert == null ? null : cert.getCertificateId())
                 .verificationLink(cert == null ? null
-                        : (publicBaseUrl + "/api/certificates/verify/" + cert.getVerificationToken()))
+                        : publicBaseUrl + "/api/certificates/verify/" + cert.getVerificationToken())
                 .review(review)
                 .build();
     }
 
-    // --- STEM check ---
     private boolean checkStemEligible(String videoId) {
         YouTubeVideoCache videoCache = videoCacheRepository.findByVideoId(videoId).orElse(null);
         return StemCategoryUtil.isStemVideo(videoCache);
     }
 
-    // --- Question extraction from ML response ---
+    private double resolveVideoDurationSec(String sessionId, Session session) {
+        double fromEvents = sessionEventRepository.findBySessionIdOrderByCreatedAtUtcAsc(sessionId)
+                .stream()
+                .map(SessionEvent::getVideoDurationSec)
+                .filter(Objects::nonNull)
+                .mapToDouble(Double::doubleValue)
+                .max()
+                .orElse(0.0);
+        if (fromEvents > 0) {
+            return fromEvents;
+        }
+        return session.getVideoDurationSec() != null ? session.getVideoDurationSec() : 0.0;
+    }
+
     private List<QuestionDraft> extractQuestions(Map<String, Object> ml) {
         Object raw = ml.get("questions");
-        if (!(raw instanceof List<?> list))
+        if (!(raw instanceof List<?> list)) {
             return List.of();
-
+        }
         List<QuestionDraft> out = new ArrayList<>();
         for (Object obj : list) {
-            if (!(obj instanceof Map<?, ?> m))
+            if (!(obj instanceof Map<?, ?> row)) {
                 continue;
-
-            String qId = str(m.get("question_id"), null);
-            String qType = str(m.get("type"), "mcq");
-            String qText = str(m.get("question"), "");
-            List<String> options = toStringList(m.get("options"));
-            // ML returns "correct_answer", fallback to "answer" for compatibility
-            String answer = str(m.get("correct_answer"), str(m.get("answer"), ""));
-            String explanation = str(m.get("explanation"), "");
-            String difficulty = str(m.get("difficulty"), "medium");
-
-            if (qText.isBlank() || answer.isBlank())
+            }
+            String question = str(row.get("question"), "");
+            if (question.isBlank()) {
                 continue;
-            out.add(new QuestionDraft(qId, qType, qText, options, answer, explanation, difficulty));
+            }
+            out.add(new QuestionDraft(
+                    str(row.get("question_id"), null),
+                    str(row.get("type"), "mcq"),
+                    question,
+                    toStringList(row.get("options")),
+                    str(row.get("explanation"), ""),
+                    str(row.get("difficulty"), "medium")));
         }
         return out;
     }
 
-    private List<String> toStringList(Object o) {
-        if (!(o instanceof List<?> list))
-            return List.of();
-        List<String> out = new ArrayList<>();
-        for (Object v : list) {
-            if (v != null && !v.toString().isBlank())
-                out.add(v.toString());
-        }
-        return out;
-    }
-
-    private String str(Object v, String def) {
-        if (v == null)
-            return def;
-        String s = v.toString().trim();
-        return s.isBlank() ? def : s;
-    }
-
-    private String normalizeAnswer(String s) {
-        if (s == null)
-            return "";
-        return s.trim().toLowerCase().replaceAll("\\s+", " ");
-    }
-
-    private boolean isCorrectAnswer(QuizQuestion question, String providedAnswerRaw, List<String> options) {
-        String expected = canonicalizeAnswer(question.getCorrectAnswer(), options);
-        String provided = canonicalizeAnswer(providedAnswerRaw, options);
-        return !expected.isBlank() && expected.equals(provided);
-    }
-
-    private List<QuizQuestionReviewDto> buildQuestionReview(List<QuizQuestion> questions, Map<String, String> providedAnswers) {
-        if (questions == null || questions.isEmpty()) {
-            return List.of();
-        }
-
-        Map<String, String> safeAnswers = providedAnswers == null ? Map.of() : providedAnswers;
-        List<QuizQuestionReviewDto> review = new ArrayList<>(questions.size());
+    private Map<String, String> normalizeAnswersByQuestionId(Map<String, String> provided, List<QuizQuestion> questions) {
+        Map<String, String> byId = new LinkedHashMap<>();
+        Map<Integer, String> byPosition = new LinkedHashMap<>();
         for (QuizQuestion q : questions) {
-            List<String> options = readOptions(q.getOptionsJson());
-            String providedRaw = resolveProvidedAnswer(safeAnswers, q);
-            boolean correct = isCorrectAnswer(q, providedRaw, options);
+            byPosition.put(q.getPositionIndex(), q.getQuestionUid());
+        }
 
-            review.add(QuizQuestionReviewDto.builder()
+        for (Map.Entry<String, String> entry : provided.entrySet()) {
+            String key = entry.getKey();
+            if (key == null || key.isBlank()) {
+                continue;
+            }
+            String resolved = key.trim();
+            String lowered = resolved.toLowerCase(Locale.ROOT);
+            if (lowered.startsWith("q") && lowered.substring(1).matches("[0-9]+")) {
+                String byPos = byPosition.get(Integer.parseInt(lowered.substring(1)));
+                if (byPos != null) {
+                    resolved = byPos;
+                }
+            } else if (lowered.matches("[0-9]+")) {
+                String byPos = byPosition.get(Integer.parseInt(lowered));
+                if (byPos != null) {
+                    resolved = byPos;
+                }
+            }
+            byId.put(resolved, entry.getValue());
+        }
+        return byId;
+    }
+
+    private List<QuizQuestionReviewDto> buildReviewFromMlResults(
+            Object rawResults,
+            List<QuizQuestion> questions,
+            Map<String, String> normalizedAnswers) {
+
+        Map<String, QuizQuestion> questionMap = new LinkedHashMap<>();
+        for (QuizQuestion q : questions) {
+            questionMap.put(q.getQuestionUid(), q);
+        }
+
+        if (!(rawResults instanceof List<?> list)) {
+            return List.of();
+        }
+
+        List<QuizQuestionReviewDto> out = new ArrayList<>();
+        for (Object obj : list) {
+            if (!(obj instanceof Map<?, ?> row)) {
+                continue;
+            }
+            String questionId = str(row.get("question_id"), null);
+            if (questionId == null) {
+                continue;
+            }
+            QuizQuestion q = questionMap.get(questionId);
+            List<String> options = q == null ? List.of() : readOptions(q.getOptionsJson());
+            out.add(QuizQuestionReviewDto.builder()
+                    .questionId(questionId)
+                    .questionType(q == null ? "mcq" : q.getQuestionType())
+                    .questionText(q == null ? null : q.getQuestionText())
+                    .options(options)
+                    .selectedAnswer(str(row.get("submitted_answer"), normalizedAnswers.get(questionId)))
+                    .correctAnswer(str(row.get("correct_answer"), null))
+                    .correct(asBoolean(row.get("is_correct"), false))
+                    .explanation(blankToNull(str(row.get("explanation"), null)))
+                    .build());
+        }
+        return out;
+    }
+
+    private List<QuizQuestionReviewDto> buildFallbackReview(List<QuizQuestion> questions, Map<String, String> submittedAnswers) {
+        List<QuizQuestionReviewDto> out = new ArrayList<>();
+        for (QuizQuestion q : questions) {
+            String submitted = submittedAnswers.get(q.getQuestionUid());
+            if (submitted == null) {
+                submitted = submittedAnswers.get("q" + q.getPositionIndex());
+            }
+            if (submitted == null) {
+                submitted = submittedAnswers.get(String.valueOf(q.getPositionIndex()));
+            }
+            out.add(QuizQuestionReviewDto.builder()
                     .questionId(q.getQuestionUid())
                     .questionType(q.getQuestionType())
                     .questionText(q.getQuestionText())
-                    .options(options)
-                    .selectedAnswer(toDisplayAnswer(providedRaw, options))
-                    .correctAnswer(toDisplayAnswer(q.getCorrectAnswer(), options))
-                    .correct(correct)
+                    .options(readOptions(q.getOptionsJson()))
+                    .selectedAnswer(submitted)
+                    .correctAnswer(null)
+                    .correct(false)
                     .explanation(blankToNull(q.getExplanationText()))
                     .build());
         }
-        return review;
+        return out;
     }
 
-    private String toDisplayAnswer(String answerRaw, List<String> options) {
-        if (answerRaw == null) {
-            return null;
+    private List<String> toStringList(Object value) {
+        if (!(value instanceof List<?> list)) {
+            return List.of();
         }
-
-        String trimmed = answerRaw.trim();
-        if (trimmed.isBlank()) {
-            return null;
-        }
-
-        String normalized = normalizeAnswer(trimmed);
-        if (!options.isEmpty()) {
-            int optionIndex = resolveOptionIndex(normalized, options);
-            if (optionIndex >= 0 && optionIndex < options.size()) {
-                return options.get(optionIndex);
+        List<String> out = new ArrayList<>();
+        for (Object item : list) {
+            if (item != null && !item.toString().isBlank()) {
+                out.add(item.toString());
             }
         }
+        return out;
+    }
 
-        String normalizedBool = normalizeBooleanToken(normalized);
-        if (!normalizedBool.isBlank()) {
-            return normalizedBool;
+    private String str(Object value, String fallback) {
+        if (value == null) {
+            return fallback;
         }
-        return trimmed;
+        String text = value.toString().trim();
+        return text.isBlank() ? fallback : text;
+    }
+
+    private int asInt(Object value, int fallback) {
+        if (value == null) {
+            return fallback;
+        }
+        if (value instanceof Number n) {
+            return n.intValue();
+        }
+        try {
+            return Integer.parseInt(value.toString().trim());
+        } catch (NumberFormatException ex) {
+            return fallback;
+        }
+    }
+
+    private double asDouble(Object value) {
+        if (value == null) {
+            return 0.0;
+        }
+        if (value instanceof Number n) {
+            return n.doubleValue();
+        }
+        return Double.parseDouble(value.toString());
+    }
+
+    private boolean asBoolean(Object value, boolean fallback) {
+        if (value == null) {
+            return fallback;
+        }
+        if (value instanceof Boolean b) {
+            return b;
+        }
+        String lowered = value.toString().trim().toLowerCase(Locale.ROOT);
+        if ("true".equals(lowered)) {
+            return true;
+        }
+        if ("false".equals(lowered)) {
+            return false;
+        }
+        return fallback;
     }
 
     private String blankToNull(String value) {
@@ -511,89 +634,6 @@ public class QuizService {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
-    }
-
-    private String canonicalizeAnswer(String answerRaw, List<String> options) {
-        String normalized = normalizeAnswer(answerRaw);
-        if (normalized.isBlank())
-            return "";
-
-        if (!options.isEmpty()) {
-            int optionIndex = resolveOptionIndex(normalized, options);
-            if (optionIndex >= 0 && optionIndex < options.size()) {
-                normalized = normalizeAnswer(options.get(optionIndex));
-            }
-        }
-
-        String normalizedBool = normalizeBooleanToken(normalized);
-        return normalizedBool.isBlank() ? normalized : normalizedBool;
-    }
-
-    private int resolveOptionIndex(String normalizedInput, List<String> options) {
-        if (normalizedInput == null || normalizedInput.isBlank())
-            return -1;
-
-        for (int i = 0; i < options.size(); i++) {
-            if (normalizeAnswer(options.get(i)).equals(normalizedInput)) {
-                return i;
-            }
-        }
-
-        Matcher optionMatcher = OPTION_PREFIX_PATTERN.matcher(normalizedInput);
-        if (optionMatcher.matches()) {
-            int idx = optionMatcher.group(1).charAt(0) - 'a';
-            if (idx >= 0 && idx < options.size())
-                return idx;
-        }
-
-        Matcher letterMatcher = LETTER_CHOICE_PATTERN.matcher(normalizedInput);
-        if (letterMatcher.matches()) {
-            int idx = letterMatcher.group(1).charAt(0) - 'a';
-            if (idx >= 0 && idx < options.size())
-                return idx;
-        }
-
-        Matcher numberMatcher = NUMBER_CHOICE_PATTERN.matcher(normalizedInput);
-        if (numberMatcher.matches()) {
-            int idx = Integer.parseInt(numberMatcher.group(1)) - 1;
-            if (idx >= 0 && idx < options.size())
-                return idx;
-        }
-
-        return -1;
-    }
-
-    private String normalizeBooleanToken(String value) {
-        return switch (value) {
-            case "true", "t", "yes", "y" -> "true";
-            case "false", "f", "no", "n" -> "false";
-            default -> "";
-        };
-    }
-
-    private String resolveProvidedAnswer(Map<String, String> answers, QuizQuestion question) {
-        String direct = answers.get(question.getQuestionUid());
-        if (direct != null)
-            return direct;
-
-        String qKey = "q" + question.getPositionIndex();
-        if (answers.containsKey(qKey))
-            return answers.get(qKey);
-
-        String posKey = String.valueOf(question.getPositionIndex());
-        if (answers.containsKey(posKey))
-            return answers.get(posKey);
-
-        for (Map.Entry<String, String> entry : answers.entrySet()) {
-            String key = entry.getKey();
-            if (key == null)
-                continue;
-            if (key.equalsIgnoreCase(question.getQuestionUid()) || key.equalsIgnoreCase(qKey)
-                    || key.equalsIgnoreCase(posKey)) {
-                return entry.getValue();
-            }
-        }
-        return null;
     }
 
     private String formatEngagementThresholdForMessage() {
@@ -612,11 +652,11 @@ public class QuizService {
     }
 
     private List<String> readOptions(String json) {
-        if (json == null || json.isBlank())
+        if (json == null || json.isBlank()) {
             return List.of();
+        }
         try {
-            return objectMapper.readValue(json, new TypeReference<List<String>>() {
-            });
+            return objectMapper.readValue(json, new TypeReference<List<String>>() {});
         } catch (Exception e) {
             return List.of();
         }
@@ -627,11 +667,23 @@ public class QuizService {
             return Map.of();
         }
         try {
-            Map<String, String> parsed = objectMapper.readValue(json, new TypeReference<Map<String, String>>() {
-            });
+            Map<String, String> parsed = objectMapper.readValue(json, new TypeReference<Map<String, String>>() {});
             return parsed == null ? Map.of() : parsed;
         } catch (Exception e) {
             return Map.of();
+        }
+    }
+
+    private List<QuizQuestionReviewDto> readReview(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            List<QuizQuestionReviewDto> parsed = objectMapper.readValue(
+                    json, new TypeReference<List<QuizQuestionReviewDto>>() {});
+            return parsed == null ? List.of() : parsed;
+        } catch (Exception e) {
+            return List.of();
         }
     }
 
@@ -640,7 +692,6 @@ public class QuizService {
             String questionType,
             String questionText,
             List<String> options,
-            String correctAnswer,
             String explanation,
             String difficulty) {
     }

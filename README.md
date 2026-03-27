@@ -19,7 +19,6 @@ The objective of the system is to validate that a learner has:
 - JWT-based authentication and role-based authorization
 - Session lifecycle management for learning activity
 - Batch ingestion of playback telemetry
-- Feature engineering for engagement analysis
 - ML service integration for engagement scoring
 - AI quiz generation and quiz attempt evaluation
 - Certificate issuance, PDF generation, QR verification, activation, and revocation
@@ -30,7 +29,7 @@ The objective of the system is to validate that a learner has:
 ```text
 User watches a video
 -> frontend sends playback events
--> backend computes engagement features
+-> backend forwards one-session raw events to ML service
 -> ML service scores learner engagement
 -> backend generates quiz
 -> learner submits quiz
@@ -181,7 +180,7 @@ Package artifact:
 
 ### ML and Quiz
 
-- engagement feature extraction from session events
+- engagement analysis from one-session raw events
 - ML prediction orchestration through the external ML service
 - quiz generation, grading, retry limits, and result retrieval
 

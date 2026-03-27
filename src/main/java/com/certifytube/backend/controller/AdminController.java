@@ -1,6 +1,7 @@
 package com.certifytube.backend.controller;
 
 import com.certifytube.backend.dto.AdminLearnerProfileResponse;
+import com.certifytube.backend.dto.AdminOverviewResponse;
 import com.certifytube.backend.dto.AdminUserSummaryDto;
 import com.certifytube.backend.service.AdminService;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,11 @@ public class AdminController {
     @GetMapping("/learners")
     public List<AdminUserSummaryDto> getLearners() {
         return adminService.getLearners();
+    }
+
+    @GetMapping("/overview")
+    public AdminOverviewResponse getOverview() {
+        return adminService.getOverview();
     }
 
     @GetMapping("/learners/{learnerId}/profile")

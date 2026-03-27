@@ -22,4 +22,5 @@ public interface SessionRepository extends JpaRepository<Session, String> {
     List<Session> findByUserIdAndStatusInOrderByCreatedAtUtcDesc(String userId, Collection<String> statuses);
 
     long countByUserId(String userId);
+    long countByStatus(String status);
 }
