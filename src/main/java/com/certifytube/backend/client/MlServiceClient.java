@@ -60,11 +60,13 @@ public class MlServiceClient {
                         String sessionId,
                         String featureVersion,
                         List<Map<String, Object>> events,
-                        String model) {
+                        String model,
+                        double engagementThreshold) {
 
                 Map<String, Object> payload = Map.of(
                                 "session_id", sessionId,
                                 "feature_version", featureVersion,
+                                "engagement_threshold", engagementThreshold,
                                 "events", events);
 
                 String endpoint = "/engagement/analyze/" + model;

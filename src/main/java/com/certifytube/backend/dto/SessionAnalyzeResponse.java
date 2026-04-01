@@ -14,4 +14,5 @@ public class SessionAnalyzeResponse {
     private double threshold; // backend-configured threshold
     private String status; // "ENGAGED" or "NOT_ENGAGED"
     private String explanation; // human-readable text from ML
+    private SystemFlowDto systemFlow;
 }

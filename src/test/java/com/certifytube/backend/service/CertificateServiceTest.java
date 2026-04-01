@@ -23,6 +23,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atLeast;
@@ -119,5 +120,77 @@ class CertificateServiceTest {
 
         assertEquals("John Doe", response.getLearnerName());
         assertEquals("cert-1", response.getCertificateId());
+    }
+
+    @Test
+    void issueIfAbsentShouldRejectWhenEngagementIsBelowThreshold() {
+        Long userId = 7L;
+        String sessionId = "session-1";
+
+        QuizAttempt attempt = new QuizAttempt();
+        attempt.setId(21L);
+        attempt.setScorePercent(91.0);
+
+        UserAccount user = new UserAccount();
+        user.setId(userId);
+        user.setName("John Doe");
+
+        Session session = new Session();
+        session.setSessionId(sessionId);
+        session.setVideoTitle("Data Structures Full Course");
+        session.setVideoId("abc123xyz12");
+        session.setVideoDurationSec(3600.0);
+
+        EngagementResult engagementResult = new EngagementResult();
+        engagementResult.setEngagementScore(0.84);
+
+        when(certificateRepository.findTopByUserIdAndSessionIdOrderByCreatedAtUtcDesc(userId, sessionId))
+                .thenReturn(Optional.empty());
+        when(userAccountRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
+        when(engagementResultRepository.findTopBySessionIdOrderByCreatedAtUtcDesc(sessionId))
+                .thenReturn(Optional.of(engagementResult));
+
+        IllegalStateException ex = assertThrows(
+                IllegalStateException.class,
+                () -> certificateService.issueIfAbsent(userId, sessionId, attempt));
+
+        assertEquals("Certificate requires engagement score >= 85%.", ex.getMessage());
+    }
+
+    @Test
+    void issueIfAbsentShouldRejectWhenQuizIsBelowThreshold() {
+        Long userId = 7L;
+        String sessionId = "session-1";
+
+        QuizAttempt attempt = new QuizAttempt();
+        attempt.setId(21L);
+        attempt.setScorePercent(79.0);
+
+        UserAccount user = new UserAccount();
+        user.setId(userId);
+        user.setName("John Doe");
+
+        Session session = new Session();
+        session.setSessionId(sessionId);
+        session.setVideoTitle("Data Structures Full Course");
+        session.setVideoId("abc123xyz12");
+        session.setVideoDurationSec(3600.0);
+
+        EngagementResult engagementResult = new EngagementResult();
+        engagementResult.setEngagementScore(0.92);
+
+        when(certificateRepository.findTopByUserIdAndSessionIdOrderByCreatedAtUtcDesc(userId, sessionId))
+                .thenReturn(Optional.empty());
+        when(userAccountRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
+        when(engagementResultRepository.findTopBySessionIdOrderByCreatedAtUtcDesc(sessionId))
+                .thenReturn(Optional.of(engagementResult));
+
+        IllegalStateException ex = assertThrows(
+                IllegalStateException.class,
+                () -> certificateService.issueIfAbsent(userId, sessionId, attempt));
+
+        assertEquals("Certificate requires quiz score >= 80%.", ex.getMessage());
     }
 }

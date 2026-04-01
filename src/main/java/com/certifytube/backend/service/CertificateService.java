@@ -68,6 +68,7 @@ public class CertificateService {
                             .orElseThrow(() -> new IllegalArgumentException("Session not found"));
                     EngagementResult engagement = engagementResultRepository.findTopBySessionIdOrderByCreatedAtUtcDesc(sessionId)
                             .orElseThrow(() -> new IllegalArgumentException("Engagement result not found"));
+                    validateCertificateEligibility(engagement, attempt);
 
                     String learnerName = normalizeLearnerName(user.getName());
 
@@ -102,6 +103,22 @@ public class CertificateService {
                             sessionId);
                     return cert;
                 });
+    }
+
+    private void validateCertificateEligibility(EngagementResult engagement, QuizAttempt attempt) {
+        double engagementScore = engagement.getEngagementScore() == null ? 0.0 : engagement.getEngagementScore();
+        double quizScorePercent = attempt.getScorePercent() == null ? 0.0 : attempt.getScorePercent();
+
+        if (engagementScore < engagementThresholdConfig) {
+            throw new IllegalStateException(
+                    "Certificate requires engagement score >= %.0f%%."
+                            .formatted(engagementThresholdConfig * 100.0));
+        }
+        if (quizScorePercent < quizThresholdConfig) {
+            throw new IllegalStateException(
+                    "Certificate requires quiz score >= %.0f%%."
+                            .formatted(quizThresholdConfig));
+        }
     }
 
     /* ─────────────────── Read ─────────────────── */

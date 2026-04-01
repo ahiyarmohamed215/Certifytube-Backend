@@ -21,4 +21,5 @@ public class QuizResponse {
     private String difficulty;
     private int totalQuestions;
     private List<QuizQuestionDto> questions;
+    private SystemFlowDto systemFlow;
 }

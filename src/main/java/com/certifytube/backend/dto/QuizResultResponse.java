@@ -25,4 +25,5 @@ public class QuizResultResponse {
     private String certificateId;
     private String verificationLink;
     private List<QuizQuestionReviewDto> review;
+    private SystemFlowDto systemFlow;
 }

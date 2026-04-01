@@ -2,6 +2,7 @@ package com.certifytube.backend.service;
 
 import com.certifytube.backend.client.MlServiceClient;
 import com.certifytube.backend.dto.SessionAnalyzeResponse;
+import com.certifytube.backend.dto.SystemFlowDto;
 import com.certifytube.backend.model.EngagementResult;
 import com.certifytube.backend.model.Session;
 import com.certifytube.backend.model.SessionEvent;
@@ -27,6 +28,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+
+import static com.certifytube.backend.util.SystemFlowUtil.data;
+import static com.certifytube.backend.util.SystemFlowUtil.flow;
+import static com.certifytube.backend.util.SystemFlowUtil.step;
 
 @Slf4j
 @Service
@@ -93,6 +98,7 @@ public class SessionAnalyzeServiceImpl implements SessionAnalyzeService {
                         .threshold(cached.getThreshold())
                         .status(cached.getStatus())
                         .explanation(cached.getExplanation())
+                        .systemFlow(buildCachedFlow(sessionId, cached))
                         .build();
             }
         }
@@ -110,10 +116,17 @@ public class SessionAnalyzeServiceImpl implements SessionAnalyzeService {
                 .map(this::mapEventToMlContract)
                 .toList();
 
-        Map<String, Object> ml = mlServiceClient.analyzeEngagement(sessionId, featureVersion, mlEvents, resolvedModel);
+        log.info("session.analyze.ml.request sessionId={} model={} featureVersion={} eventCount={}",
+                sessionId, resolvedModel, featureVersion, mlEvents.size());
+        Map<String, Object> ml = mlServiceClient.analyzeEngagement(
+                sessionId,
+                featureVersion,
+                mlEvents,
+                resolvedModel,
+                engagementThreshold);
 
         double score = asDouble(ml.get("engagement_score"));
-        String explanation = String.valueOf(ml.getOrDefault("explanation", ""));
+        String explanation = normalizeText(ml.get("explanation"));
 
         Object topPositive;
         Object topNegative;
@@ -126,6 +139,7 @@ public class SessionAnalyzeServiceImpl implements SessionAnalyzeService {
         }
 
         String status = score >= engagementThreshold ? "ENGAGED" : "NOT_ENGAGED";
+        String nextSessionStatus = "ENGAGED".equals(status) ? "QUIZ_PENDING" : session.getStatus();
 
         try {
             engagementResultRepository.save(EngagementResult.builder()
@@ -145,9 +159,7 @@ public class SessionAnalyzeServiceImpl implements SessionAnalyzeService {
             throw new RuntimeException("Failed to save ML engagement result", e);
         }
 
-        if ("ENGAGED".equals(status)) {
-            session.setStatus("QUIZ_PENDING");
-        }
+        session.setStatus(nextSessionStatus);
         sessionRepository.save(session);
 
         return SessionAnalyzeResponse.builder()
@@ -157,6 +169,14 @@ public class SessionAnalyzeServiceImpl implements SessionAnalyzeService {
                 .threshold(engagementThreshold)
                 .status(status)
                 .explanation(explanation)
+                .systemFlow(buildAnalyzeFlow(
+                        sessionId,
+                        resolvedModel,
+                        mlEvents,
+                        score,
+                        explanation,
+                        status,
+                        nextSessionStatus))
                 .build();
     }
 
@@ -193,5 +213,94 @@ public class SessionAnalyzeServiceImpl implements SessionAnalyzeService {
         if (o instanceof Number n)
             return n.doubleValue();
         return Double.parseDouble(o.toString());
+    }
+
+    private String normalizeText(Object value) {
+        if (value == null) {
+            return "";
+        }
+        return value.toString().trim();
+    }
+
+    private SystemFlowDto buildCachedFlow(String sessionId, EngagementResult cached) {
+        return flow("session-analyze", List.of(
+                step(
+                        "load-cached-analysis",
+                        "cached",
+                        "Returned a recently saved engagement result instead of calling ML again.",
+                        data(
+                                "sessionId", sessionId,
+                                "model", cached.getModelUsed(),
+                                "status", cached.getStatus(),
+                                "engagementScore", cached.getEngagementScore(),
+                                "threshold", cached.getThreshold(),
+                                "cachedAtUtc", cached.getCreatedAtUtc()))));
+    }
+
+    private SystemFlowDto buildAnalyzeFlow(
+            String sessionId,
+            String model,
+            List<Map<String, Object>> mlEvents,
+            double score,
+            String explanation,
+            String status,
+            String nextSessionStatus) {
+
+        return flow("session-analyze", List.of(
+                step(
+                        "prepare-ml-payload",
+                        "completed",
+                        "Prepared the engagement payload that will be sent to ML.",
+                        data(
+                                "sessionId", sessionId,
+                                "model", model,
+                                "featureVersion", featureVersion,
+                                "eventCount", mlEvents.size(),
+                                "firstEventType", firstEventType(mlEvents),
+                                "lastEventType", lastEventType(mlEvents))),
+                step(
+                        "call-ml",
+                        "completed",
+                        "Sent the engagement analysis request to the ML service.",
+                        data(
+                                "endpoint", "/engagement/analyze/" + model,
+                                "payloadSummary", data(
+                                        "sessionId", sessionId,
+                                        "featureVersion", featureVersion,
+                                        "engagementThreshold", engagementThreshold,
+                                        "eventCount", mlEvents.size()))),
+                step(
+                        "finalize-result",
+                        "completed",
+                        "Saved the ML result and updated the session state.",
+                        data(
+                                "status", status,
+                                "engagementScore", score,
+                                "threshold", engagementThreshold,
+                                "sessionStatus", nextSessionStatus,
+                                "explanationPreview", truncate(explanation, 180)))));
+    }
+
+    private String firstEventType(List<Map<String, Object>> mlEvents) {
+        if (mlEvents == null || mlEvents.isEmpty()) {
+            return null;
+        }
+        Object value = mlEvents.get(0).get("event_type");
+        return value == null ? null : value.toString();
+    }
+
+    private String lastEventType(List<Map<String, Object>> mlEvents) {
+        if (mlEvents == null || mlEvents.isEmpty()) {
+            return null;
+        }
+        Object value = mlEvents.get(mlEvents.size() - 1).get("event_type");
+        return value == null ? null : value.toString();
+    }
+
+    private String truncate(String value, int maxChars) {
+        if (value == null || value.length() <= maxChars) {
+            return value;
+        }
+        return value.substring(0, maxChars) + "...";
     }
 }

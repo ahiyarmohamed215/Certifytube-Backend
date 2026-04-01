@@ -11,4 +11,5 @@ public class EventBatchResponse {
     private int rejected;
     @Builder.Default
     private List<EventBatchError> errors = new ArrayList<>();
+    private SystemFlowDto systemFlow;
 }

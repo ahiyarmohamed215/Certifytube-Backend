@@ -8,6 +8,7 @@ import com.certifytube.backend.dto.QuizQuestionReviewDto;
 import com.certifytube.backend.dto.QuizResponse;
 import com.certifytube.backend.dto.QuizResultResponse;
 import com.certifytube.backend.dto.QuizSubmitRequest;
+import com.certifytube.backend.dto.SystemFlowDto;
 import com.certifytube.backend.model.Certificate;
 import com.certifytube.backend.model.EngagementResult;
 import com.certifytube.backend.model.Quiz;
@@ -43,6 +44,10 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+
+import static com.certifytube.backend.util.SystemFlowUtil.data;
+import static com.certifytube.backend.util.SystemFlowUtil.flow;
+import static com.certifytube.backend.util.SystemFlowUtil.step;
 
 @Slf4j
 @Service
@@ -190,10 +195,17 @@ public class QuizService {
                 session.getSessionId(),
                 user.getId());
         if (recentQuiz.isPresent()) {
-            return getQuizForCurrentUser(recentQuiz.get().getQuizId());
+            Quiz existing = recentQuiz.get();
+            return buildQuizResponse(existing, buildReuseQuizFlow(
+                    "quiz-generate",
+                    "reuse-existing-quiz",
+                    "Returned the most recent quiz for this session instead of calling ML again.",
+                    existing));
         }
 
         double duration = resolveVideoDurationSec(req.getSessionId(), session);
+        log.info("quiz.generate.ml.request sessionId={} videoId={} durationSec={}",
+                session.getSessionId(), session.getVideoId(), duration);
         Map<String, Object> ml = mlServiceClient.generateQuiz(session.getSessionId(), session.getVideoId(), duration);
 
         String mlQuizId = str(ml.get("quiz_id"), null);
@@ -207,7 +219,11 @@ public class QuizService {
             if (!existing.getUserId().equals(user.getId())) {
                 throw new IllegalStateException("ML quiz_id is already linked to another user");
             }
-            return getQuizForCurrentUser(existing.getQuizId());
+            return buildQuizResponse(existing, buildReuseQuizFlow(
+                    "quiz-generate",
+                    "reuse-ml-quiz",
+                    "Reused a quiz that already exists for the ML quiz_id.",
+                    existing));
         }
 
         List<QuestionDraft> drafts = extractQuestions(ml);
@@ -245,7 +261,10 @@ public class QuizService {
                     .build());
         }
 
-        return getQuizForCurrentUser(quiz.getQuizId());
+        log.info("quiz.generate.completed sessionId={} quizId={} totalQuestions={} difficulty={}",
+                session.getSessionId(), quiz.getQuizId(), drafts.size(), difficulty);
+
+        return buildQuizResponse(quiz, buildQuizGenerateFlow(quiz, duration, drafts.size(), difficulty));
     }
 
     @Transactional(readOnly = true)
@@ -256,6 +275,10 @@ public class QuizService {
             throw new AccessDeniedException("Quiz does not belong to authenticated user");
         }
 
+        return buildQuizResponse(quiz, null);
+    }
+
+    private QuizResponse buildQuizResponse(Quiz quiz, SystemFlowDto systemFlow) {
         List<QuizQuestionDto> questions = quizQuestionRepository.findByQuizOrderByPositionIndexAsc(quiz)
                 .stream()
                 .map(q -> QuizQuestionDto.builder()
@@ -274,6 +297,7 @@ public class QuizService {
                 .difficulty(quiz.getDifficulty())
                 .totalQuestions(quiz.getTotalQuestions())
                 .questions(questions)
+                .systemFlow(systemFlow)
                 .build();
     }
 
@@ -317,6 +341,8 @@ public class QuizService {
             return row;
         }).toList();
 
+        log.info("quiz.submit.ml.request quizId={} sessionId={} answerCount={}",
+                quiz.getQuizId(), quiz.getSessionId(), mlAnswers.size());
         Map<String, Object> ml = mlServiceClient.gradeQuiz(
                 quiz.getQuizId(),
                 quiz.getSessionId(),
@@ -359,6 +385,9 @@ public class QuizService {
             }
         }
 
+        log.info("quiz.submit.completed quizId={} passed={} scorePercent={} correctCount={} totalCount={}",
+                quizId, passed, score, correct, total);
+
         return QuizResultResponse.builder()
                 .quizId(quizId)
                 .correctCount(correct)
@@ -371,6 +400,7 @@ public class QuizService {
                 .certificateId(certId)
                 .verificationLink(verifyLink)
                 .review(review)
+                .systemFlow(buildQuizSubmitFlow(quiz, mlAnswers.size(), total, correct, score, passed, certId))
                 .build();
     }
 
@@ -427,6 +457,97 @@ public class QuizService {
                         : publicBaseUrl + "/api/certificates/verify/" + cert.getVerificationToken())
                 .review(review)
                 .build();
+    }
+
+    private SystemFlowDto buildReuseQuizFlow(String feature, String stepName, String message, Quiz quiz) {
+        return flow(feature, List.of(
+                step(
+                        stepName,
+                        "cached",
+                        message,
+                        data(
+                                "quizId", quiz.getQuizId(),
+                                "sessionId", quiz.getSessionId(),
+                                "videoId", quiz.getVideoId(),
+                                "totalQuestions", quiz.getTotalQuestions(),
+                                "difficulty", quiz.getDifficulty()))));
+    }
+
+    private SystemFlowDto buildQuizGenerateFlow(
+            Quiz quiz,
+            double durationSec,
+            int totalQuestions,
+            String difficulty) {
+
+        return flow("quiz-generate", List.of(
+                step(
+                        "check-eligibility",
+                        "completed",
+                        "Confirmed that the session passed the engagement gate and can generate a quiz.",
+                        data(
+                                "sessionId", quiz.getSessionId(),
+                                "videoId", quiz.getVideoId(),
+                                "requiredEngagementScore", minEngagementScore)),
+                step(
+                        "call-ml",
+                        "completed",
+                        "Sent the quiz generation request to the ML service.",
+                        data(
+                                "endpoint", "/quiz/generate",
+                                "payload", data(
+                                        "sessionId", quiz.getSessionId(),
+                                        "videoId", quiz.getVideoId(),
+                                        "videoDurationSec", durationSec))),
+                step(
+                        "persist-quiz",
+                        "completed",
+                        "Saved the generated quiz and questions for the current user.",
+                        data(
+                                "quizId", quiz.getQuizId(),
+                                "sessionId", quiz.getSessionId(),
+                                "totalQuestions", totalQuestions,
+                                "difficulty", difficulty))));
+    }
+
+    private SystemFlowDto buildQuizSubmitFlow(
+            Quiz quiz,
+            int answerCount,
+            int totalCount,
+            int correctCount,
+            double scorePercent,
+            boolean passed,
+            String certificateId) {
+
+        return flow("quiz-submit", List.of(
+                step(
+                        "prepare-answers",
+                        "completed",
+                        "Normalized the submitted answers before sending them to ML for grading.",
+                        data(
+                                "quizId", quiz.getQuizId(),
+                                "sessionId", quiz.getSessionId(),
+                                "answerCount", answerCount)),
+                step(
+                        "call-ml",
+                        "completed",
+                        "Sent the quiz grading payload to the ML service.",
+                        data(
+                                "endpoint", "/quiz/grade",
+                                "payload", data(
+                                        "quizId", quiz.getQuizId(),
+                                        "sessionId", quiz.getSessionId(),
+                                        "videoId", quiz.getVideoId(),
+                                        "answerCount", answerCount))),
+                step(
+                        "finalize-attempt",
+                        "completed",
+                        "Saved the graded result and issued a certificate when the pass score was met.",
+                        data(
+                                "totalCount", totalCount,
+                                "correctCount", correctCount,
+                                "scorePercent", scorePercent,
+                                "passed", passed,
+                                "certificateId", certificateId))));
     }
 
     private boolean checkStemEligible(String videoId) {

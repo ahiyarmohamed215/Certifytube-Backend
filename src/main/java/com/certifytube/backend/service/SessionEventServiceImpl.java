@@ -3,6 +3,7 @@ package com.certifytube.backend.service;
 import com.certifytube.backend.dto.EventBatchError;
 import com.certifytube.backend.dto.EventBatchRequest;
 import com.certifytube.backend.dto.EventBatchResponse;
+import com.certifytube.backend.dto.SystemFlowDto;
 import com.certifytube.backend.model.Session;
 import com.certifytube.backend.model.UserAccount;
 import com.certifytube.backend.model.SessionEvent;
@@ -19,6 +20,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+
+import static com.certifytube.backend.util.SystemFlowUtil.data;
+import static com.certifytube.backend.util.SystemFlowUtil.flow;
+import static com.certifytube.backend.util.SystemFlowUtil.step;
 
 @Slf4j
 @Service
@@ -40,6 +45,7 @@ public class SessionEventServiceImpl implements SessionEventService {
                     .saved(0)
                     .rejected(0)
                     .errors(errors)
+                    .systemFlow(buildEmptyBatchFlow())
                     .build();
         }
         UserAccount user = authenticatedUserService.currentUser();
@@ -151,11 +157,64 @@ public class SessionEventServiceImpl implements SessionEventService {
         if (updatedSessions > 0) {
             log.debug("session.progress.updated sessions={}", updatedSessions);
         }
+        log.info("session.events.batch.processed received={} saved={} rejected={} updatedSessions={}",
+                events.size(), entities.size(), errors.size(), updatedSessions);
 
         return EventBatchResponse.builder()
                 .saved(entities.size())
                 .rejected(errors.size())
                 .errors(errors)
+                .systemFlow(buildBatchFlow(events.size(), entities, errors.size(), updatedSessions))
                 .build();
+    }
+
+    private SystemFlowDto buildEmptyBatchFlow() {
+        return flow("event-batch", List.of(
+                step(
+                        "validate-events",
+                        "skipped",
+                        "No session events were received in the batch.",
+                        data(
+                                "receivedCount", 0,
+                                "savedCount", 0,
+                                "rejectedCount", 0))));
+    }
+
+    private SystemFlowDto buildBatchFlow(
+            int receivedCount,
+            List<SessionEvent> entities,
+            int rejectedCount,
+            int updatedSessions) {
+
+        return flow("event-batch", List.of(
+                step(
+                        "validate-events",
+                        "completed",
+                        "Validated the incoming watch-event payload from the frontend.",
+                        data(
+                                "receivedCount", receivedCount,
+                                "savedCount", entities.size(),
+                                "rejectedCount", rejectedCount)),
+                step(
+                        "persist-events",
+                        "completed",
+                        "Stored accepted watch events in the database.",
+                        data(
+                                "savedCount", entities.size(),
+                                "sampleEventTypes", sampleEventTypes(entities))),
+                step(
+                        "update-session-progress",
+                        "completed",
+                        "Updated session progress using the latest watch positions.",
+                        data("updatedSessions", updatedSessions))));
+    }
+
+    private List<String> sampleEventTypes(List<SessionEvent> entities) {
+        return entities.stream()
+                .map(SessionEvent::getEventType)
+                .filter(type -> type != null && !type.isBlank())
+                .distinct()
+                .limit(5)
+                .toList();
     }
 }

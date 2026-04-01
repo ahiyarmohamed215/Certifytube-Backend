@@ -14,6 +14,7 @@ public class ApiError {
     private String code;
     private String message;
     private String path;
+    private String requestId;
 
     public ApiError() {}
 
